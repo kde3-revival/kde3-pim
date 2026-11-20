@@ -9,3 +9,6 @@ libktnef_la_LDFLAGS = $(all_libraries) -version-info 1:0:0 -no-undefined
 libktnef_la_METASOURCES = AUTO
 
 noinst_HEADERS = mapi.h lzfu.h
+
+mime_DATA = ms-tnef.desktop
+mimedir = $(kde_mimedir)/application
