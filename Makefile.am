@@ -24,7 +24,7 @@
 # COMPILE_BEFORE_kaddressbook = libkdepim certmanager
 # COMPILE_BEFORE_kmail= libkdepim libkpimidentities certmanager libkpgp libkmime indexlib
 # COMPILE_BEFORE_plugins = kmail libkdepim libkcal
-# COMPILE_BEFORE_kontact = kmail korganizer
+# COMPILE_BEFORE_kontact = kaddressbook kmail korganizer
 # COMPILE_BEFORE_kioslaves = libkmime libkdepim
 # COMPILE_BEFORE_kresources = libkdepim kaddressbook
 

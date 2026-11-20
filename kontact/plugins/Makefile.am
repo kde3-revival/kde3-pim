@@ -1,1 +1,1 @@
-SUBDIRS = kmail korganizer summary specialdates
+SUBDIRS = kaddressbook kmail korganizer summary specialdates
