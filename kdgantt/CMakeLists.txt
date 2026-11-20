@@ -1,0 +1,25 @@
+kde3_add_library(kdgantt OBJECT
+  SOURCES
+    KDGanttView.cpp
+    KDGanttViewEventItem.cpp
+    KDGanttViewItem.cpp
+    KDGanttViewItemDrag.cpp
+    KDGanttViewSubwidgets.cpp
+    KDGanttViewSummaryItem.cpp
+    KDGanttViewTaskItem.cpp
+    KDGanttViewTaskLink.cpp
+    KDGanttViewTaskLinkGroup.cpp
+    KDGanttMinimizeSplitter.cpp
+    KDGanttSemiSizingControl.cpp
+    KDGanttSizingControl.cpp
+    KDGanttXMLTools.cpp
+    itemAttributeDialog.ui
+  MOC
+    KDGanttMinimizeSplitter.h
+    KDGanttSemiSizingControl.h
+    KDGanttSizingControl.h
+    KDGanttView.h
+    KDGanttViewSubwidgets.h
+  LINK
+    KDE3::kdeui
+)
