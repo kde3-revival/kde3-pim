@@ -22,7 +22,7 @@ libkdenetwork    Marc Mutz <mutz@kde.org>
                  Karl-Heinz Zimmer <khz@kde.org> (cryptplugwrapper*)
 libkdepim        Cornelius Schumacher <schumacher@kde.org>
                  Tobias Koenig <tokoe@kde.org> (addresseeview, kvcarddrag)
-                 Zack Rusin <zack@kde.org> (addressesdialog, komposer)
+                 Zack Rusin <zack@kde.org> (addressesdialog)
                  Don Sanders <sanders@kde.org> (maillistdrag)
 libksieve        ? Marc Mutz <mutz@kde.org>
 mimelib          ?

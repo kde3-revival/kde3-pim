@@ -13,8 +13,8 @@ The KDE-PIM project aims to bring together those who wish to help design,
 implement, test, etc. anything that's to do with personal information
 management.
 
-This rather broad scope encompasses mail clients, addressbooks, usenet news,
-scheduling and even sticky notes.
+This rather broad scope encompasses mail clients, addressbooks and
+scheduling.
 
 What it is
 ----------
@@ -27,16 +27,15 @@ What it is
 
 There is also quite an amount of infrastructure in this package:
 
-* calendarsystem: library for handling of non-gregorian calendar systems
 * libkdepim: Common code for different kdepim apps
 * libkdenetwork: Common code for apps previously being in the kdenetwork CVS
-                 module (KMail, KNode). This will be merged with libkdepim.
+                 module (KMail). This will be merged with libkdepim.
 * mimelib: MIME messages library
 * libkcal: C++ api for the iCalendar and vCalendar formats
 * libkcal/libical: a basic iCalendar protocol implementation, see RFCs 2245,2246
 * kdgantt: lib for Gantt diagrams, used by the timeline and free/busy views of
            KOrganizer
-* kioslaves/sieve: Sieve kioslave
+* kioslaves: the imap4 (IMAP), mbox and sieve (Sieve) kioslaves
 * ktnef: handling of tnef data
 
 The following subdirectories have been moved to kdenonbeta/kdepim:

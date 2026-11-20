@@ -1,7 +1,12 @@
 # to create a ps file use 'dot -Tps -o dependency-graph.ps dependency-graph.dot' (dot it part of the graphviz package)
 digraph "inter-dependency graph for kdepim" {
+        "certmanager" -> "kaddressbook";
         "certmanager" -> "kmail";
         "certmanager" -> "libkpimidentities";
+        "kaddressbook" -> "kontact";
+        "kaddressbook" -> "kresources";
+        "kdgantt" -> "korganizer";
+        "kmail" -> "kontact";
         "kmail" -> "plugins";
         "korganizer" -> "kontact";
         "ktnef" -> "libkcal";
@@ -9,15 +14,19 @@ digraph "inter-dependency graph for kdepim" {
         "libemailfunctions" -> "korganizer";
         "libemailfunctions" -> "libkcal";
         "libemailfunctions" -> "libkpimidentities";
+        "libkcal" -> "kaddressbook";
         "libkcal" -> "korganizer";
         "libkcal" -> "kresources";
         "libkcal" -> "libkdepim";
         "libkcal" -> "plugins";
         "libkdenetwork" -> "certmanager";
+        "libkdenetwork" -> "kaddressbook";
         "libkdenetwork" -> "kmail";
+        "libkdepim" -> "kaddressbook";
         "libkdepim" -> "kioslaves";
         "libkdepim" -> "kmail";
         "libkdepim" -> "korganizer";
+        "libkdepim" -> "kresources";
         "libkdepim" -> "libkpimidentities";
         "libkdepim" -> "plugins";
         "libkholidays" -> "kontact";
