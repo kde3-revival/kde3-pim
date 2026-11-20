@@ -6,6 +6,7 @@ include(CheckIncludeFile)
 include(CheckIncludeFileCXX)
 include(CheckFunctionExists)
 include(CheckLibraryExists)
+include(CheckSymbolExists)
 include(CheckTypeSize)
 include(CheckCSourceCompiles)
 include(CheckCXXSourceCompiles)
@@ -137,16 +138,12 @@ endif()
 # --disable-inotify: Linux inode notifications
 option(KDEPIM_WITH_INOTIFY "Use Linux inode notifications (KMail's editor watcher)" ON)
 if(KDEPIM_WITH_INOTIFY)
-  check_c_source_compiles("#include <asm/unistd.h>
-#define _S390_BITOPS_H
-#include <linux/inotify.h>
-#ifndef IN_ALL_EVENTS
-#error no inotify notification
-#endif
-#ifndef __NR_inotify_init
-#error no __NR_inotify_init
-#endif
-int main(void) { return 0; }" HAVE_INOTIFY)
+  # configure.in.in tested <linux/inotify.h> and __NR_inotify_init, which
+  # EditorWatcher called through syscall(); it now uses the C library's
+  # <sys/inotify.h> functions (__NR_inotify_init does not exist on newer
+  # architectures such as aarch64 and riscv64, which have only
+  # inotify_init1, wrapped by the C library's inotify_init())
+  check_symbol_exists(inotify_init "sys/inotify.h" HAVE_INOTIFY)
 endif()
 
 # ---- indexlib (indexlib/configure.in.in) -------------------------------------
