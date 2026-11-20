@@ -1,4 +1,4 @@
-SUBDIRS = interfaces icons pics kpartsdesignerplugin about
+SUBDIRS = interfaces icons pics about
 
 INCLUDES = -I$(top_srcdir) $(all_includes)
 

@@ -73,7 +73,7 @@ AC_DEFUN([KDEPIM_PATH_GPGME],
   else
     GPGME_CFLAGS=""
     GPGME_LIBS=""
-    AC_MSG_RESULT([no, will use local libgpgme-copy])
+    AC_MSG_RESULT([no])
     ifelse([$3], , :, [$3])
   fi
   AC_SUBST(GPGME_CFLAGS)
@@ -88,9 +88,8 @@ dnl END inline of gpgme.m4
 
 # The minimum required gpgme version is 0.4.5.
 # It was the first useable one for C++ (class keyword) and KDE (largefile support).
-# If you change this minimum version here, update also configure.in.bot
+# If you change this minimum version here, update also the AC_MSG_ERROR below
 
-kdepim_needs_gpgme_copy=""
 KDEPIM_PATH_GPGME(0.4.5,[
 	AC_LANG_SAVE
 	AC_LANG_C
@@ -170,23 +169,12 @@ KDEPIM_PATH_GPGME(0.4.5,[
 	AC_LANG_RESTORE
 	
 ],[
-	kdepim_needs_gpgme_copy="true"
-	GPGME_CFLAGS='-I$(top_srcdir)/libkdenetwork/libgpgme-copy/gpgme -I$(top_srcdir)/libkdenetwork/libgpg-error-copy -I$(top_builddir)/libkdenetwork/libgpg-error-copy'
-	GPGME_LIBS='$(top_builddir)/libkdenetwork/libgpgme-copy/gpgme/libgpgme.la'
-	GPGME_LIBS_DEP='$(GPGME_LIBS)'
-	# All of this is in gpgme-copy
-	AC_DEFINE(HAVE_GPGME_KEYLIST_MODE_VALIDATE, 1, [Define to 1 if your gpgme supports GPGME_KEYLIST_MODE_VALIDATE])
-	AC_DEFINE(HAVE_GPGME_KEY_T_KEYLIST_MODE, 1, [Define to 1 if your gpgme's gpgme_key_t has the keylist_mode member])
-	AC_DEFINE(HAVE_GPGME_CANCEL, 1, [Define to 1 if your gpgme supports gpgme_cancel()])
+	AC_MSG_ERROR([gpgme >= 0.4.5 is required (see --with-gpgme-prefix).])
 ])
 
-AC_SUBST(GPGME_LIBS_DEP)
-
-AM_CONDITIONAL(needs_gpgme_copy, test -n "$kdepim_needs_gpgme_copy")
-
-dnl Always true - either from the local copy or from the system lib.
+dnl Always true: gpgme >= 0.4.5 is required.
 dnl Still used in gpgmepp/gpgmefw.h for some reason.
-AC_DEFINE(HAVE_GPGME_0_4_BRANCH, 1, [Always set since we use gpgme-copy if gpgme isn't available])
+AC_DEFINE(HAVE_GPGME_0_4_BRANCH, 1, [Always set since gpgme >= 0.4.5 is required])
 
 dnl Used by Makefile.am
 AC_PROG_AWK

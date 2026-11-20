@@ -19,8 +19,8 @@
 #include <qtooltip.h>
 #include <qrect.h>
 
-#include <ktexteditor/editinterface.h>
-#include <ktexteditor/view.h>
+#include <qptrlist.h>
+#include <qmap.h>
 #include "snippetconfig.h"
 
 class KDevProject;
@@ -35,6 +35,7 @@ class KTextEdit;
 class KConfig;
 class KMEdit;
 class KActionCollection;
+class KShortcut;
 
 /**
 This is the widget which gets added to the right TreeToolView.

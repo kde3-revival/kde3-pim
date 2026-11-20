@@ -1,8 +1,6 @@
 ./admin/configure.in.min
 configure.in.in
 ./certmanager/configure.in.in
-./certmanager/lib/backends/chiasmus/configure.in.in
-./dcopidlng/configure.in.in
 ./indexlib/configure.in.in
 ./kaddressbook/xxport/configure.in.bot
 ./kaddressbook/xxport/configure.in.in
@@ -27,9 +25,7 @@ configure.in.in
 ./kpilot/conduits/configure.in.in
 ./ktnef/configure.in.in
 ./libkcal/libical/configure.in.in
-./libkdenetwork/gpgmepp/configure.in.bot
 ./libkdenetwork/gpgmepp/configure.in.in
-./libkdenetwork/libgpgme-copy/configure.in.in
 ./libkdepim/configure.in.in
 ./libkmime/configure.in.in
 ./libkpimexchange/configure.in.in

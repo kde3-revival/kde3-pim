@@ -1,1 +1,1 @@
-SUBDIRS = qgpgme chiasmus
+SUBDIRS = qgpgme

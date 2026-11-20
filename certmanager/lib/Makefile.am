@@ -13,7 +13,6 @@ libkleopatra_la_SOURCES = \
 libkleopatra_la_LIBADD = \
 			kleo/libkleopatra_core.la \
 			backends/qgpgme/libkleopatra_backend_qgpgme.la \
-			backends/chiasmus/libkleopatra_backend_chiasmus.la \
 			ui/libkleopatra_ui.la \
 			\
 			$(top_builddir)/libkdenetwork/qgpgme/libqgpgme.la \
