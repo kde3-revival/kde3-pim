@@ -33,7 +33,7 @@ void memvector<T>::resize( size_type n_s ) {
 	data_->resize( n_s * byte_io::byte_lenght<value_type>() + byte_io::byte_lenght<unsigned>() );
 	iterator p_end = end();
 	byte_io::write<unsigned>( data_->rw_base( 0 ), n_s );
-	while ( operator !=<unsigned, unsigned>(p_end, end()) ) {
+	while ( p_end != end() ) {
 		*p_end = value_type();
 		++p_end;
 		
