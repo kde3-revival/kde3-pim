@@ -976,10 +976,6 @@ void MainWindow::slotOpenUrl( const KURL &url )
     if ( url.path() == "/switch" ) {
       selectPlugin( mCurrentPlugin );
     }
-    if ( url.path() == "/gwwizard" ) {
-      KRun::runCommand( "groupwarewizard" );
-      slotQuit();
-    }
   } else
     new KRun( url, this );
 }
@@ -1057,13 +1053,10 @@ QString MainWindow::introductionString()
 
   QString handbook_icon_path = iconloader->iconPath( "contents2",  KIcon::Desktop );
   QString html_icon_path = iconloader->iconPath( "html",  KIcon::Desktop );
-  QString wizard_icon_path = iconloader->iconPath( "wizard",  KIcon::Desktop );
 
   QString info = i18n( "<h2 style='text-align:center; margin-top: 0px;'>Welcome to Kontact %1</h2>"
       "<p>%1</p>"
       "<table align=\"center\">"
-      "<tr><td><a href=\"%1\"><img width=\"%1\" height=\"%1\" src=\"%1\" /></a></td>"
-      "<td><a href=\"%1\">%1</a><br><span id=\"subtext\"><nobr>%1</td></tr>"
       "<tr><td><a href=\"%1\"><img width=\"%1\" height=\"%1\" src=\"%1\" /></a></td>"
       "<td><a href=\"%1\">%1</a><br><span id=\"subtext\"><nobr>%1</td></tr>"
       "<tr><td><a href=\"%1\"><img width=\"%1\" height=\"%1\" src=\"%1\" /></a></td>"
@@ -1086,13 +1079,6 @@ QString MainWindow::introductionString()
       .arg( "http://kontact.org" )
       .arg( i18n( "Visit Kontact Website" ) )
       .arg( i18n( "Access online resources and tutorials" ) )
-      .arg( "exec:/gwwizard" )
-      .arg( iconSize )
-      .arg( iconSize )
-      .arg( wizard_icon_path )
-      .arg( "exec:/gwwizard" )
-      .arg( i18n( "Configure Kontact as Groupware Client" ) )
-      .arg( i18n( "Prepare Kontact for use in corporate networks" ) )
       .arg( "exec:/switch" );
   return info;
 }

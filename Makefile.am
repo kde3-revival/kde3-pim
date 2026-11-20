@@ -31,8 +31,7 @@
 # COMPILE_BEFORE_kioslaves = libkmime libkdepim
 # COMPILE_BEFORE_libkpimexchange = libkdepim
 # COMPILE_BEFORE_kalarm = libkdepim libkmime
-# COMPILE_BEFORE_kresources = libkpimexchange knotes kaddressbook kode
-# COMPILE_BEFORE_wizards = libkdepim kresources korganizer kaddressbook kmail
+# COMPILE_BEFORE_kresources = libkdepim
 # COMPILE_BEFORE_korn = libkdenetwork
 # COMPILE_BEFORE_kitchensync = libkdepim
 # COMPILE_BEFORE_akregator = libkdepim

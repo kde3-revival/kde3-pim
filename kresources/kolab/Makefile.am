@@ -1,4 +1,4 @@
-SUBDIRS = shared kabc knotes kcal
+SUBDIRS = shared kabc kcal
 
 updatedir = $(kde_datadir)/kconf_update
 update_DATA = kolab-resource.upd
