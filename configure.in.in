@@ -18,6 +18,51 @@ KDE_CHECK_THREADING
 
 CXXFLAGS="$CXXFLAGS $KDE_DEFAULT_CXXFLAGS"
 
+# check for libbluetooth (Bluetooth library) because gnokii may require it
+AC_DEFUN([KDE_CHECK_BLUETOOTH],
+[
+  AC_CHECK_HEADERS(bluetooth/bluetooth.h)
+  LIB_BLUETOOTH=
+  AC_CHECK_LIB(bluetooth, hci_open_dev,
+       [ LIB_BLUETOOTH="-lbluetooth" ],
+       [],
+       [] )
+  AC_SUBST(LIB_BLUETOOTH)
+])
+
+
+# check for libgnokii (Nokia mobile phone library)
+AC_DEFUN([KDE_CHECK_GNOKII],
+[
+  KDE_CHECK_HEADERS(gnokii.h)
+  AC_REQUIRE([AC_HAVE_XPM])
+  AC_CHECK_LIB(gnokii, gn_cfg_read,
+       [ LIB_GNOKII="-lgnokii $LIB_BLUETOOTH" ],
+       [
+    	AC_CHECK_LIB(gnokii, gn_cfg_get,
+       	[ LIB_GNOKII="-lgnokii -lintl $LIB_BLUETOOTH" ],
+       	[], $all_libraries -lintl -lXpm -lX11 $LIB_BLUETOOTH )
+       ],
+       $all_libraries -lXpm -lX11 $LIB_BLUETOOTH )
+  AC_SUBST(LIB_GNOKII)
+])
+
+AC_ARG_WITH(gnokii,
+  [AC_HELP_STRING(--with-gnokii,
+    [enable support for mobile phones through gnokii @<:@default=check@:>@])],
+  [], with_gnokii=check)
+
+LIB_GNOKII=
+if test "x$with_gnokii" != xno; then
+  # for kaddressbook/xxport/
+  KDE_CHECK_BLUETOOTH
+  KDE_CHECK_GNOKII
+
+  if test "x$with_gnokii" != xcheck && test -z "$LIB_GNOKII"; then
+    AC_MSG_ERROR([--with-gnokii was given, but test for gnokii failed])
+  fi
+fi
+
 dnl Checks for header files.
 AC_CHECK_HEADERS(sys/cdefs.h) dnl for libkholidays/lunarphase.cpp
 AC_CHECK_HEADERS(sys/ioctl.h)

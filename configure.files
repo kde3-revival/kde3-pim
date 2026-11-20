@@ -2,6 +2,8 @@
 configure.in.in
 ./certmanager/configure.in.in
 ./indexlib/configure.in.in
+./kaddressbook/xxport/configure.in.bot
+./kaddressbook/xxport/configure.in.in
 ./kioslaves/configure.in.bot
 ./kioslaves/configure.in.in
 ./kioslaves/imap4/configure.in.in
