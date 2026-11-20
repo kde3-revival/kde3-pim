@@ -26,7 +26,7 @@
 # COMPILE_BEFORE_plugins = kmail libkdepim libkcal
 # COMPILE_BEFORE_kontact = kmail korganizer
 # COMPILE_BEFORE_kioslaves = libkmime libkdepim
-# COMPILE_BEFORE_kresources = libkdepim
+# COMPILE_BEFORE_kresources = libkdepim kaddressbook
 
 AUTOMAKE_OPTIONS = foreign 1.6.1
 DISTCLEANFILES = inst-apps

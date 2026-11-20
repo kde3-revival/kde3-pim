@@ -1,1 +1,1 @@
-SUBDIRS = lib remote kolab
+SUBDIRS = lib remote kolab birthdays
