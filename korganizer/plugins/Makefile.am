@@ -1,1 +1,0 @@
-SUBDIRS=datenums hebrew printing
