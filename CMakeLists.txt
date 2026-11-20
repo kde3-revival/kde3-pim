@@ -32,3 +32,5 @@ include_directories("${PROJECT_BINARY_DIR}")
 kdepim_all_includes(
   "${PROJECT_SOURCE_DIR}/libkdepim"
   SYSTEM "${KDE3_INCLUDE_DIR}" "${KDE3Qt_INCLUDE_DIR}")
+
+add_subdirectory(libkdenetwork)
