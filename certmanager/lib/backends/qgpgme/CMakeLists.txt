@@ -1,0 +1,49 @@
+include_directories(
+  "${PROJECT_SOURCE_DIR}/libkdenetwork"
+  "${PROJECT_SOURCE_DIR}/certmanager/lib"
+)
+
+kde3_add_library(kleopatra_backend_qgpgme OBJECT
+  SOURCES
+    gnupgprocessbase.cpp
+    qgpgmeprogresstokenmapper.cpp
+    qgpgmebackend.cpp
+    qgpgmejob.cpp
+    qgpgmekeylistjob.cpp
+    qgpgmekeygenerationjob.cpp
+    qgpgmeimportjob.cpp
+    qgpgmeexportjob.cpp
+    qgpgmesecretkeyexportjob.cpp
+    qgpgmedownloadjob.cpp
+    qgpgmedeletejob.cpp
+    qgpgmeencryptjob.cpp
+    qgpgmedecryptjob.cpp
+    qgpgmesignjob.cpp
+    qgpgmeverifydetachedjob.cpp
+    qgpgmeverifyopaquejob.cpp
+    qgpgmesignencryptjob.cpp
+    qgpgmedecryptverifyjob.cpp
+    qgpgmecryptoconfig.cpp
+    qgpgmerefreshkeysjob.cpp
+  MOC
+    gnupgprocessbase.h
+    qgpgmecryptoconfig.h
+    qgpgmedecryptjob.h
+    qgpgmedecryptverifyjob.h
+    qgpgmedeletejob.h
+    qgpgmedownloadjob.h
+    qgpgmeencryptjob.h
+    qgpgmeexportjob.h
+    qgpgmeimportjob.h
+    qgpgmekeygenerationjob.h
+    qgpgmekeylistjob.h
+    qgpgmerefreshkeysjob.h
+    qgpgmesecretkeyexportjob.h
+    qgpgmesignencryptjob.h
+    qgpgmesignjob.h
+    qgpgmeverifydetachedjob.h
+    qgpgmeverifyopaquejob.h
+  LINK
+    KDE3Qt::Qt
+    PkgConfig::GPGME
+)

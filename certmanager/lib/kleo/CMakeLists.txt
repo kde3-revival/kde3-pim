@@ -1,0 +1,68 @@
+include_directories(
+  "${PROJECT_SOURCE_DIR}/libkdenetwork"
+  "${PROJECT_SOURCE_DIR}/certmanager/lib"
+)
+
+kde3_add_library(kleopatra_core OBJECT
+  SOURCES
+    cryptobackend.cpp
+    cryptobackendfactory.cpp
+    enum.cpp
+    dn.cpp
+    job.cpp
+    multideletejob.cpp
+    hierarchicalkeylistjob.cpp
+    kconfigbasedkeyfilter.cpp
+    keyfiltermanager.cpp
+  MOC
+    cryptobackendfactory.h
+    decryptjob.h
+    decryptverifyjob.h
+    deletejob.h
+    downloadjob.h
+    encryptjob.h
+    exportjob.h
+    hierarchicalkeylistjob.h
+    importjob.h
+    job.h
+    keyfiltermanager.h
+    keygenerationjob.h
+    keylistjob.h
+    multideletejob.h
+    refreshkeysjob.h
+    signencryptjob.h
+    signjob.h
+    specialjob.h
+    verifydetachedjob.h
+    verifyopaquejob.h
+  LINK
+    KDE3Qt::Qt
+    PkgConfig::GPGME
+)
+
+install(FILES
+  enum.h
+  cryptobackend.h
+  cryptobackendfactory.h
+  cryptoconfig.h
+  dn.h
+  job.h
+  keylistjob.h
+  keygenerationjob.h
+  importjob.h
+  exportjob.h
+  downloadjob.h
+  deletejob.h
+  encryptjob.h
+  decryptjob.h
+  signjob.h
+  verifydetachedjob.h
+  verifyopaquejob.h
+  decryptverifyjob.h
+  signencryptjob.h
+  refreshkeysjob.h
+  multideletejob.h
+  hierarchicalkeylistjob.h
+  keyfilter.h
+  keyfiltermanager.h
+  DESTINATION ${KDE3_INCLUDE_INSTALL_DIR}/kleo)

@@ -1,0 +1,59 @@
+include_directories(
+  "${PROJECT_SOURCE_DIR}/libkdenetwork"
+  "${PROJECT_SOURCE_DIR}/libkpgp"
+  "${PROJECT_SOURCE_DIR}/certmanager/lib"
+)
+
+kde3_add_library(kleopatra_ui OBJECT
+  SOURCES
+    kdhorizontalline.cpp
+    messagebox.cpp
+    progressbar.cpp
+    progressdialog.cpp
+    keylistview.cpp
+    keyselectiondialog.cpp
+    keyrequester.cpp
+    passphrasedialog.cpp
+    keyapprovaldialog.cpp
+    backendconfigwidget.cpp
+    dnattributeorderconfigwidget.cpp
+    cryptoconfigmodule.cpp
+    cryptoconfigdialog.cpp
+    directoryserviceswidgetbase.ui
+    directoryserviceswidget.cpp
+    adddirectoryservicedialog.ui
+    adddirectoryservicedialogimpl.cpp
+  MOC
+    adddirectoryservicedialogimpl.h
+    backendconfigwidget.h
+    cryptoconfigdialog.h
+    cryptoconfigmodule.h
+    cryptoconfigmodule_p.h
+    directoryserviceswidget.h
+    dnattributeorderconfigwidget.h
+    kdhorizontalline.h
+    keyapprovaldialog.h
+    keylistview.h
+    keyrequester.h
+    keyselectiondialog.h
+    passphrasedialog.h
+    progressbar.h
+    progressdialog.h
+  LINK
+    KDE3Qt::Qt
+    PkgConfig::GPGME
+)
+
+install(FILES
+  kdhorizontalline.h
+  messagebox.h
+  progressbar.h
+  progressdialog.h
+  keylistview.h
+  keyselectiondialog.h
+  keyrequester.h
+  passphrasedialog.h
+  keyapprovaldialog.h
+  backendconfigwidget.h
+  dnattributeorderconfigwidget.h
+  DESTINATION ${KDE3_INCLUDE_INSTALL_DIR}/kleo)
