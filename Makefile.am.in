@@ -11,6 +11,7 @@
 COMPILE_AFTER_libkmime = libemailfunctions
 COMPILE_AFTER_libemailfunctions = libkcal libkpimidentities kmail korganizer
 COMPILE_AFTER_libkholidays = korganizer kontact
+COMPILE_AFTER_ktnef = libkcal
 COMPILE_AFTER_libkcal = korganizer libkdepim kresources
 COMPILE_AFTER_mimelib = kmail
 COMPILE_AFTER_libkdenetwork = kmail
@@ -20,7 +21,7 @@ COMPILE_AFTER_libksieve = kmail
 #
 COMPILE_BEFORE_libkpimidentities = libkdepim certmanager
 COMPILE_BEFORE_certmanager = libkdenetwork libkpgp
-COMPILE_BEFORE_korganizer = libkdepim libkpimidentities
+COMPILE_BEFORE_korganizer = libkdepim libkpimidentities kdgantt
 COMPILE_BEFORE_kaddressbook = libkdepim certmanager
 COMPILE_BEFORE_kmail= libkdepim libkpimidentities certmanager libkpgp libkmime indexlib
 COMPILE_BEFORE_plugins = kmail libkdepim libkcal
