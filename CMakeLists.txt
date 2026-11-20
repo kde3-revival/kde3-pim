@@ -35,3 +35,4 @@ kdepim_all_includes(
 
 add_subdirectory(libkdenetwork)
 add_subdirectory(libkmime)
+add_subdirectory(mimelib)
