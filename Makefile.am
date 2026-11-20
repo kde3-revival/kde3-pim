@@ -27,7 +27,7 @@
 # COMPILE_BEFORE_knode= libkdepim libkpgp libkmime
 # COMPILE_BEFORE_karm = libkdepim kresources
 # COMPILE_BEFORE_plugins = kmail libkdepim libkcal
-# COMPILE_BEFORE_kontact = kaddressbook knotes korganizer akregator karm
+# COMPILE_BEFORE_kontact = kmail korganizer
 # COMPILE_BEFORE_kioslaves = libkmime libkdepim
 # COMPILE_BEFORE_libkpimexchange = libkdepim
 # COMPILE_BEFORE_kalarm = libkdepim libkmime

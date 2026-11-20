@@ -9,7 +9,7 @@ libkontact_specialdatesplugin_la_LIBADD = \
         $(top_builddir)/libkdepim/libkdepim.la \
         $(top_builddir)/libkholidays/libkholidays.la \
         $(top_builddir)/korganizer/libkorganizer_calendar.la \
-        $(top_builddir)/kaddressbook/libkaddressbook.la
+        $(LIB_KABC)
 
 libkontact_specialdatesplugin_la_SOURCES = specialdates_plugin.cpp \
                                            sdsummarywidget.cpp
