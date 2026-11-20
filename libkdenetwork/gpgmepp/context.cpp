@@ -341,17 +341,30 @@ namespace GpgME {
 
   Error Context::startTrustItemListing( const char * pattern, int maxLevel ) {
     d->lastop = Private::TrustList;
+#ifdef HAVE_GPGME_OP_TRUSTLIST
     return d->lasterr = gpgme_op_trustlist_start( d->ctx, pattern, maxLevel );
+#else
+    (void)pattern; (void)maxLevel;
+    return d->lasterr = gpg_error( GPG_ERR_NOT_IMPLEMENTED );
+#endif
   }
 
   TrustItem Context::nextTrustItem( Error & e ) {
     gpgme_trust_item_t ti = 0;
+#ifdef HAVE_GPGME_OP_TRUSTLIST
     e = d->lasterr = gpgme_op_trustlist_next( d->ctx, &ti );
+#else
+    e = d->lasterr = gpg_error( GPG_ERR_NOT_IMPLEMENTED );
+#endif
     return ti;
   }
 
   Error Context::endTrustItemListing() {
+#ifdef HAVE_GPGME_OP_TRUSTLIST
     return d->lasterr = gpgme_op_trustlist_end( d->ctx );
+#else
+    return d->lasterr = gpg_error( GPG_ERR_NOT_IMPLEMENTED );
+#endif
   }
 
   DecryptionResult Context::decrypt( const Data & cipherText, Data & plainText ) {

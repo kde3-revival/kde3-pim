@@ -88,6 +88,10 @@ int main(void) { gpgme_decrypt_result_t res = 0; unsigned int wku = res->wrong_k
 check_c_source_compiles("#include <gpgme.h>
 int main(void) { int i = GPGME_INCLUDE_CERTS_DEFAULT; return i; }"
   HAVE_GPGME_INCLUDE_CERTS_DEFAULT)
+# gpgme 2 has no trust item listing any more (GnuPG 2 had none either)
+check_c_source_compiles("#include <gpgme.h>
+int main(void) { gpgme_ctx_t ctx = 0; gpgme_error_t e = gpgme_op_trustlist_start(ctx, 0, 0); return (int)e; }"
+  HAVE_GPGME_OP_TRUSTLIST)
 check_c_source_compiles("#include <gpgme.h>
 int main(void) { gpgme_ctx_t ctx = 0; gpgme_data_t data = 0; unsigned int flags = 0;
   gpgme_error_t e = gpgme_op_getauditlog(ctx, data, flags); return (int)e; }"

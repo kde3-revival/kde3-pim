@@ -131,6 +131,7 @@ namespace GpgME {
 	instance()->nextKeyEvent( ctx, Key( key, false, ctx ? ctx->keyListMode() : 0 ) );
       }
       break;
+#ifdef HAVE_GPGME_OP_TRUSTLIST
     case GPGME_EVENT_NEXT_TRUSTITEM:
       {
 	gpgme_trust_item_t item = static_cast<gpgme_trust_item_t>( type_data );
@@ -138,6 +139,7 @@ namespace GpgME {
 	gpgme_trust_item_unref( item );
       }
       break;
+#endif
     default: // warn
       ;
     }

@@ -27,6 +27,17 @@
 
 #include <cassert>
 
+#ifdef HAVE_GPGME_OP_TRUSTLIST
+#define TRUST_ITEM_REF( item ) gpgme_trust_item_ref( item )
+#define TRUST_ITEM_UNREF( item ) gpgme_trust_item_unref( item )
+#define TRUST_ITEM_FIELD( item, field, null ) ( (item) ? (item)->field : (null) )
+#else
+// gpgme 2 has no trust items: Context never makes one, all are null
+#define TRUST_ITEM_REF( item ) ( (void)(item) )
+#define TRUST_ITEM_UNREF( item ) ( (void)(item) )
+#define TRUST_ITEM_FIELD( item, field, null ) ( (void)(item), (null) )
+#endif
+
 namespace GpgME {
 
   struct TrustItem::Private  {
@@ -41,29 +52,29 @@ namespace GpgME {
   TrustItem::TrustItem( gpgme_trust_item_t item ) {
     d = new Private( item );
     if ( d->item )
-      gpgme_trust_item_ref( d->item );
+      TRUST_ITEM_REF( d->item );
   }
 
   TrustItem::TrustItem( const TrustItem & other ) {
     d = new Private( other.d->item );
     if ( d->item )
-      gpgme_trust_item_ref( d->item );
+      TRUST_ITEM_REF( d->item );
   }
 
   const TrustItem & TrustItem::operator=( const TrustItem & other ) {
     if ( &other == this ) return *this;
 
     if ( other.d->item )
-      gpgme_trust_item_ref( other.d->item );
+      TRUST_ITEM_REF( other.d->item );
     if ( d->item )
-      gpgme_trust_item_unref( d->item );
+      TRUST_ITEM_UNREF( d->item );
     *d = *other.d;
     return *this;
   }
 
   TrustItem::~TrustItem() {
     if ( d->item )
-      gpgme_trust_item_unref( d->item );
+      TRUST_ITEM_UNREF( d->item );
     delete d; d = 0;
   }
 
@@ -77,23 +88,23 @@ namespace GpgME {
 
 
   const char * TrustItem::keyID() const {
-    return d->item ? d->item->keyid : 0 ;
+    return TRUST_ITEM_FIELD( d->item, keyid, (const char *)0 );
   }
 
   const char * TrustItem::userID() const {
-    return d->item ? d->item->name : 0 ;
+    return TRUST_ITEM_FIELD( d->item, name, (const char *)0 );
   }
 
   const char * TrustItem::ownerTrustAsString() const {
-    return d->item ? d->item->owner_trust : 0 ;
+    return TRUST_ITEM_FIELD( d->item, owner_trust, (const char *)0 );
   }
 
   const char * TrustItem::validityAsString() const {
-    return d->item ? d->item->validity : 0 ;
+    return TRUST_ITEM_FIELD( d->item, validity, (const char *)0 );
   }
 
   int TrustItem::trustLevel() const {
-    return d->item ? d->item->level : 0 ;
+    return TRUST_ITEM_FIELD( d->item, level, 0 );
   }
 
   TrustItem::Type TrustItem::type() const {
@@ -101,8 +112,8 @@ namespace GpgME {
       return Unknown;
     else 
       return
-	d->item->type == 1 ? Key :
-	d->item->type == 2 ? UserID :
+	TRUST_ITEM_FIELD( d->item, type, 0 ) == 1 ? Key :
+	TRUST_ITEM_FIELD( d->item, type, 0 ) == 2 ? UserID :
 	Unknown ;
   }
 

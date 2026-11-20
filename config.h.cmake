@@ -72,6 +72,9 @@
 #cmakedefine HAVE_GPGME_KEY_T_KEYLIST_MODE 1
 /* Define to 1 if your gpgme supports gpgme_op_getauditlog */
 #cmakedefine HAVE_GPGME_OP_GETAUDITLOG 1
+/* Define to 1 if your gpgme has the trust item listing
+   (gpgme_op_trustlist_*, gpgme_trust_item_*; removed in gpgme 2) */
+#cmakedefine HAVE_GPGME_OP_TRUSTLIST 1
 /* Define to 1 if your gpgme's gpgme_decrypt_result_t has the
    wrong_key_usage member */
 #cmakedefine HAVE_GPGME_WRONG_KEY_USAGE 1
