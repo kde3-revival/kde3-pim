@@ -552,6 +552,9 @@ void ActionManager::initActions()
       action = new KAction( i18n("&Addressbook"),"contents",0,
                             mCalendarView,SLOT( openAddressbook() ),
                             mACollection,"addressbook" );
+      // KAddressBook is not part of this kdepim; like KMail, only offer it if installed
+      if ( KStandardDirs::findExe( "kaddressbook" ).isEmpty() )
+        action->setEnabled( false );
   }
 
 
