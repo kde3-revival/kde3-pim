@@ -1,0 +1,495 @@
+# before the settings of this directory, which the subdirectories
+# do not have in Makefile.am
+add_subdirectory(interfaces)
+add_subdirectory(about)
+add_subdirectory(pics)
+add_subdirectory(profiles)
+add_subdirectory(avscripts)
+
+include_directories(
+  "${PROJECT_SOURCE_DIR}/libkmime"
+  "${PROJECT_SOURCE_DIR}/libkpgp"
+  "${PROJECT_SOURCE_DIR}/libkdenetwork"
+  "${PROJECT_SOURCE_DIR}/libkdepim"
+  "${PROJECT_SOURCE_DIR}/libkpimidentities"
+  "${PROJECT_SOURCE_DIR}/libemailfunctions"
+  "${PROJECT_SOURCE_DIR}/libksieve"
+  "${PROJECT_SOURCE_DIR}/mimelib"
+  "${PROJECT_SOURCE_DIR}/certmanager/lib"
+  "${PROJECT_SOURCE_DIR}/certmanager/lib/ui"
+  "${PROJECT_SOURCE_DIR}/indexlib"
+  "${PROJECT_SOURCE_DIR}/ktnef"
+  "${PROJECT_SOURCE_DIR}/korganizer"
+  "${PROJECT_SOURCE_DIR}"
+)
+
+# KDE_CXXFLAGS = $(USE_RTTI): -frtti is the default
+
+kde3_use_dcopidlng(kmailIface.h kmailicalIface.h)
+
+# -avoid-version: libkmailprivate.so
+kde3_add_library(kmailprivate SHARED
+  SOURCES
+    kmmessage.cpp
+    kmmainwin.cpp
+    configuredialog.cpp
+    configuredialog_p.cpp
+    klistviewindexedsearchline.cpp
+    simplestringlisteditor.cpp
+    index.cpp
+    identitydrag.cpp
+    identitylistview.cpp
+    identitydialog.cpp
+    kmfolderdia.cpp
+    kmfoldertree.cpp
+    kmtransport.cpp
+    kmfoldercombobox.cpp
+    kmaccount.cpp
+    kmheaders.cpp
+    headeritem.cpp
+    listjob.cpp
+    kmcomposewin.cpp
+    kmfolder.cpp
+    kmmsgpartdlg.cpp
+    kmreaderwin.cpp
+    htmlstatusbar.cpp
+    kmmsgdict.cpp
+    kmgroupware.cpp
+    folderstorage.cpp
+    csshelper.cpp
+    klistboxdialog.cpp
+    actionscheduler.cpp
+    messageproperty.cpp
+    kmmsgpart.cpp
+    kmmsginfo.cpp
+    accountmanager.cpp
+    kmacctfolder.cpp
+    kmdict.cpp
+    kmsystemtray.cpp
+    kmacctlocal.cpp
+    kmfolderdir.cpp
+    kmfoldermgr.cpp
+    kmfoldernode.cpp
+    kmsender.cpp
+    kmacctseldlg.cpp
+    kmfiltermgr.cpp
+    kmsearchpatternedit.cpp
+    filterimporterexporter.cpp
+    encodingdetector.cpp
+    encodingdetector_ja.cpp
+    kmfilteraction.cpp
+    kmsearchpattern.cpp
+    kmfolderseldlg.cpp
+    kmfilter.cpp
+    kmfilterdlg.cpp
+    kmmsgbase.cpp
+    kmmsglist.cpp
+    kmaddrbook.cpp
+    signatureconfigurator.cpp
+    xfaceconfigurator.cpp
+    networkaccount.cpp
+    imapaccountbase.cpp
+    kmservertest.cpp
+    kmacctimap.cpp
+    kmacctcachedimap.cpp
+    kmfawidgets.cpp
+    kmfoldermbox.cpp
+    kmfolderimap.cpp
+    undostack.cpp
+    kmfoldercachedimap.cpp
+    kmfoldermaildir.cpp
+    popaccount.cpp
+    colorlistbox.cpp
+    kmkernel.cpp
+    kmailIface.skel
+    kmailicalIface.skel
+    accountdialog.cpp
+    searchwindow.cpp
+    vcardviewer.cpp
+    vacationdialog.cpp
+    vacation.cpp
+    sievedebugdialog.cpp
+    sieveconfig.cpp
+    sievejob.cpp
+    kmpopheaders.cpp
+    kmpopfiltercnfrmdlg.cpp
+    kmmimeparttree.cpp
+    mailinglist-magic.cpp
+    kmacctmaildir.cpp
+    attachmentstrategy.cpp
+    headerstrategy.cpp
+    headerstyle.cpp
+    khtmlparthtmlwriter.cpp
+    filehtmlwriter.cpp
+    teehtmlwriter.cpp
+    mailcomposerIface.skel
+    objecttreeparser.cpp
+    attachmentcollector.cpp
+    bodypartformatter.cpp
+    bodypartformatterfactory.cpp
+    partNode.cpp
+    mailsourceviewer.cpp
+    kmcommands.cpp
+    kmreadermainwin.cpp
+    kmstartup.cpp
+    kmmainwidget.cpp
+    folderpropertiesdialog.ui
+    kmfolderindex.cpp
+    kmfoldersearch.cpp
+    transportmanager.cpp
+    folderjob.cpp
+    cachedimapjob.cpp
+    maildirjob.cpp
+    mboxjob.cpp
+    imapjob.cpp
+    subscriptiondialog.cpp
+    kmailicalifaceimpl.cpp
+    aboutdata.cpp
+    folderIface.cpp
+    folderIface.skel
+    mailserviceimpl.cpp
+    attachmentlistview.cpp
+    kmedit.cpp
+    kmlineeditspell.cpp
+    kmatmlistview.cpp
+    composer.cpp
+    isubject.cpp
+    bodyvisitor.cpp
+    antispamwizard.cpp
+    urlhandlermanager.cpp
+    dictionarycombobox.cpp
+    secondarywindow.cpp
+    filterlog.cpp
+    filterlogdlg.cpp
+    ../korganizer/korganizeriface.stub
+    messagecomposer.cpp
+    keyresolver.cpp
+    globalsettings.cpp
+    globalsettings_base.kcfgc
+    regexplineedit.cpp
+    rulewidgethandlermanager.cpp
+    headerlistquicksearch.cpp
+    acljobs.cpp
+    folderdiaacltab.cpp
+    quotajobs.cpp
+    folderdiaquotatab.cpp
+    folderdiaquotatab_p.cpp
+    partnodebodypart.cpp
+    expirejob.cpp
+    compactionjob.cpp
+    jobscheduler.cpp
+    callback.cpp
+    searchjob.cpp
+    renamejob.cpp
+    composercryptoconfiguration.ui
+    warningconfiguration.ui
+    smimeconfiguration.ui
+    annotationjobs.cpp
+    accountcombobox.cpp
+    redirectdialog.cpp
+    foldershortcutdialog.cpp
+    folderrequester.cpp
+    spamheaderanalyzer.cpp
+    antispamconfig.cpp
+    replyphrases.kcfgc
+    custommimeheader.kcfgc
+    recipientseditor.cpp
+    recipientspicker.cpp
+    kwindowpositioner.cpp
+    distributionlistdialog.cpp
+    expirypropertiesdialog.cpp
+    mailinglistpropertiesdialog.cpp
+    newfolderdialog.cpp
+    accountwizard.cpp
+    textsource.cpp
+    managesievescriptsdialog.cpp
+    chiasmuskeyselector.cpp
+    util.cpp
+    templatesinsertcommand.cpp
+    customtemplates_base.ui
+    customtemplates.cpp
+    customtemplates_kfg.kcfgc
+    templatesconfiguration_base.ui
+    templatesconfiguration.cpp
+    templatesconfiguration_kfg.kcfgc
+    templateparser.cpp
+    copyfolderjob.cpp
+    messagecopyhelper.cpp
+    localsubscriptiondialog.cpp
+    editorwatcher.cpp
+    ../korganizer/kcalendariface.stub
+    favoritefolderview.cpp
+    foldertreebase.cpp
+    snippetdlgbase.ui
+    snippetwidget.cpp
+    snippetconfig.cpp
+    snippetdlg.cpp
+    snippetitem.cpp
+    snippetsettings.cpp
+    snippetsettingsbase.ui
+    scalix.cpp
+    messageactions.cpp
+    korghelper.cpp
+  MOC
+    accountcombobox.h
+    accountdialog.h
+    accountmanager.h
+    accountwizard.h
+    acljobs.h
+    actionscheduler.h
+    annotationjobs.h
+    antispamwizard.h
+    attachmentlistview.h
+    cachedimapjob.h
+    chiasmuskeyselector.h
+    colorlistbox.h
+    compactionjob.h
+    composer.h
+    configuredialog.h
+    configuredialog_p.h
+    copyfolderjob.h
+    customtemplates.h
+    dictionarycombobox.h
+    editorwatcher.h
+    expirejob.h
+    expirypropertiesdialog.h
+    favoritefolderview.h
+    filterlog.h
+    filterlogdlg.h
+    folderIface.h
+    folderdiaacltab.h
+    folderdiaquotatab.h
+    folderdiaquotatab_p.h
+    folderjob.h
+    folderrequester.h
+    foldershortcutdialog.h
+    folderstorage.h
+    foldertreebase.h
+    globalsettings.h
+    headerlistquicksearch.h
+    htmlstatusbar.h
+    identitydialog.h
+    identitydrag.h
+    identitylistview.h
+    imapaccountbase.h
+    imapjob.h
+    index.h
+    jobscheduler.h
+    khtmlparthtmlwriter.h
+    klistboxdialog.h
+    klistviewindexedsearchline.h
+    kmaccount.h
+    kmacctcachedimap.h
+    kmacctimap.h
+    kmacctseldlg.h
+    kmailicalifaceimpl.h
+    kmatmlistview.h
+    kmcommands.h
+    kmcomposewin.h
+    kmedit.h
+    kmfawidgets.h
+    kmfilterdlg.h
+    kmfiltermgr.h
+    kmfolder.h
+    kmfoldercachedimap.h
+    kmfoldercombobox.h
+    kmfolderdia.h
+    kmfolderdir.h
+    kmfolderimap.h
+    kmfolderindex.h
+    kmfoldermaildir.h
+    kmfoldermbox.h
+    kmfoldermgr.h
+    kmfoldernode.h
+    kmfoldersearch.h
+    kmfolderseldlg.h
+    kmfoldertree.h
+    kmheaders.h
+    kmkernel.h
+    kmlineeditspell.h
+    kmmainwidget.h
+    kmmainwin.h
+    kmmimeparttree.h
+    kmmsgpartdlg.h
+    kmpopfiltercnfrmdlg.h
+    kmreadermainwin.h
+    kmreaderwin.h
+    kmsearchpatternedit.h
+    kmsender.h
+    kmsender_p.h
+    kmservertest.h
+    kmsystemtray.h
+    kmtransport.h
+    kwindowpositioner.h
+    listjob.h
+    localsubscriptiondialog.h
+    maildirjob.h
+    mailinglistpropertiesdialog.h
+    managesievescriptsdialog.h
+    managesievescriptsdialog_p.h
+    mboxjob.h
+    messageactions.h
+    messagecomposer.h
+    messagecopyhelper.h
+    messageproperty.h
+    networkaccount.h
+    newfolderdialog.h
+    popaccount.h
+    quotajobs.h
+    recipientseditor.h
+    recipientspicker.h
+    redirectdialog.h
+    regexplineedit.h
+    renamejob.h
+    searchjob.h
+    searchwindow.h
+    secondarywindow.h
+    sieveconfig.h
+    sievedebugdialog.h
+    sievejob.h
+    signatureconfigurator.h
+    simplestringlisteditor.h
+    snippetdlg.h
+    snippetitem.h
+    snippetsettings.h
+    snippetwidget.h
+    subscriptiondialog.h
+    templateparser.h
+    templatesconfiguration.h
+    templatesinsertcommand.h
+    undostack.h
+    vacation.h
+    vacationdialog.h
+    vcardviewer.h
+    xfaceconfigurator.h
+  LINK
+    kmime
+    kpgp
+    kdepim
+    kpimidentities
+    mimelib
+    ksieve
+    emailfunctions
+    kleopatra
+    $<$<BOOL:${HAVE_INDEXLIB}>:index>
+    kcal
+    KDE3::khtml
+    KDE3::kspell
+    KDE3::kabc
+)
+
+kde3_add_module(kcm_kmail
+  SOURCES
+    kcm_kmail.cpp
+  LINK
+    kmailprivate
+    KDE3::kdecore
+)
+
+kde3_add_module(libkmailpart
+  SOURCES
+    kmailpartIface.skel
+    kmail_part.cpp
+  MOC
+    kmail_part.h
+  LINK
+    kmailprivate
+)
+
+kde3_add_module(libkmail_bodypartformatter_application_octetstream
+  SOURCES
+    app_octetstream.cpp
+)
+# the Qt flags of CPPFLAGS (QT_THREAD_SUPPORT, _REENTRANT): the module
+# links nothing (no LIBADD) that would carry them
+target_compile_definitions(libkmail_bodypartformatter_application_octetstream
+  PRIVATE $<TARGET_PROPERTY:KDE3Qt::Qt,INTERFACE_COMPILE_DEFINITIONS>)
+
+kde3_add_executable(kmail
+  SOURCES
+    main.cpp
+  LINK
+    kmailprivate
+)
+
+install(FILES
+  application_octetstream.desktop
+  DESTINATION ${KDE3_DATA_INSTALL_DIR}/kmail/plugins/bodypartformatter)
+
+install(FILES
+  kmailIface.h
+  kmailpartIface.h
+  kmailicalIface.h
+  DESTINATION ${KDE3_INCLUDE_INSTALL_DIR})
+
+install(FILES
+  KMail.desktop
+  kmail_view.desktop
+  DESTINATION ${KDE3_XDG_APPS_INSTALL_DIR})
+
+install(FILES
+  kmcomposerui.rc
+  kmmainwin.rc
+  kmreadermainwin.rc
+  eventsrc
+  kmail_part.rc
+  DESTINATION ${KDE3_DATA_INSTALL_DIR}/kmail)
+
+install(FILES
+  kmail.upd
+  DESTINATION ${KDE3_DATA_INSTALL_DIR}/kconf_update)
+
+install(PROGRAMS
+  upgrade-transport.pl
+  kmail-pgpidentity.pl
+  upgrade-signature.pl
+  kmail-upd-identities.pl
+  kmail-3.1-use-UOID-for-identities.pl
+  kmail-3.1-update-new-mail-notification-settings.pl
+  kmail-3.1.4-dont-use-UOID-0-for-any-identity.pl
+  kmail-3.2-update-loop-on-goto-unread-settings.sh
+  kmail-3.2-misc.sh
+  kmail-3.3-use-ID-for-accounts.pl
+  kmail-3.3-move-identities.pl
+  kmail-3.3-aegypten.pl
+  kmail-3.3-split-sign-encr-keys.sh
+  kmail-3.3-misc.pl
+  kmail-3.3b1-misc.pl
+  kmail-3.4-misc.pl
+  kmail-3.4.1-update-status-filters.pl
+  kmail-3.5-trigger-flag-migration.pl
+  DESTINATION ${KDE3_DATA_INSTALL_DIR}/kconf_update)
+
+install(FILES
+  kmail.antispamrc
+  kmail.antivirusrc
+  DESTINATION ${KDE3_CONFIG_INSTALL_DIR})
+
+install(FILES
+  tips
+  DESTINATION ${KDE3_DATA_INSTALL_DIR}/kmail)
+
+install(FILES
+  dcopmail.desktop
+  dcopimap.desktop
+  DESTINATION ${KDE3_SERVICETYPES_INSTALL_DIR})
+
+install(FILES
+  kmail_config_misc.desktop
+  kmail_config_appearance.desktop
+  kmail_config_identity.desktop
+  kmail_config_accounts.desktop
+  kmail_config_composer.desktop
+  kmail_config_security.desktop
+  DESTINATION ${KDE3_SERVICES_INSTALL_DIR})
+
+install(FILES
+  kmail.kcfg
+  replyphrases.kcfg
+  custommimeheader.kcfg
+  templatesconfiguration_kfg.kcfg
+  customtemplates_kfg.kcfg
+  DESTINATION ${KDE3_KCFG_INSTALL_DIR})
+
+kde3_install_icons(AUTO)
+
