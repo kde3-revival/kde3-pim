@@ -1,0 +1,21 @@
+kde3_add_library(kmime SHARED VERSION_INFO 4:0:2
+  SOURCES
+    kmime_charfreq.cpp
+    kmime_util.cpp
+    kmime_mdn.cpp
+    kmime_codecs.cpp
+    kmime_codec_base64.cpp
+    kmime_codec_uuencode.cpp
+    kmime_codec_qp.cpp
+    kmime_codec_identity.cpp
+    kmime_parsers.cpp
+    kmime_header_parsing.cpp
+    kmime_content.cpp
+    kmime_headers.cpp
+    kmime_message.cpp
+    kmime_newsarticle.cpp
+    boolflags.cpp
+    kqcstringsplitter.cpp
+  LINK
+    KDE3::kdecore
+)

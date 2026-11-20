@@ -34,3 +34,4 @@ kdepim_all_includes(
   SYSTEM "${KDE3_INCLUDE_DIR}" "${KDE3Qt_INCLUDE_DIR}")
 
 add_subdirectory(libkdenetwork)
+add_subdirectory(libkmime)
