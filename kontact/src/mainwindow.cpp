@@ -334,7 +334,7 @@ void MainWindow::setupActions()
   mSyncActionsEnabled = cfg->readBoolEntry( "GroupwareMailFoldersEnabled", true );
 
   if ( mSyncActionsEnabled ) {
-    mSyncActions = new KToolBarPopupAction( KGuiItem( i18n( "Synchronize" ), "kitchensync" ),
+    mSyncActions = new KToolBarPopupAction( KGuiItem( i18n( "Synchronize" ), "reload" ),
                                             KStdAccel::shortcut(KStdAccel::Reload), this, SLOT( slotSyncClicked() ),
                                             actionCollection(), "action_sync" );
   }
