@@ -28,5 +28,4 @@ configure.in.in
 ./libkdenetwork/gpgmepp/configure.in.in
 ./libkdepim/configure.in.in
 ./libkmime/configure.in.in
-./libkpimexchange/configure.in.in
 configure.in.mid

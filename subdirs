@@ -2,10 +2,8 @@ doc
 indexlib
 kabc
 kdgantt
-kgantt
 kmailcvt
 kmobile
-kode
 ktnef
 libkdenetwork
 libkholidays
@@ -23,7 +21,6 @@ kfile-plugins
 libkdepim
 kpilot
 libkpimidentities
-libkpimexchange
 konsolekalendar
 knotes
 knode
