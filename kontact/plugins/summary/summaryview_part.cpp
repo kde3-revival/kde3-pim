@@ -155,7 +155,6 @@ void SummaryViewPart::updateWidgets()
     activeSummaries << "kontact_specialdatesplugin";
     activeSummaries << "kontact_korganizerplugin";
     activeSummaries << "kontact_todoplugin";
-    activeSummaries << "kontact_newstickerplugin";
   } else {
     activeSummaries = config.readListEntry( "ActiveSummaries" );
   }
@@ -403,11 +402,8 @@ void SummaryViewPart::loadLayout()
     mLeftColumnSummaries = config.readListEntry( "LeftColumnSummaries" );
   }
 
-  if ( !config.hasKey( "RightColumnSummaries" ) ) {
-    mRightColumnSummaries << "kontact_newstickerplugin";
-  } else {
+  if ( config.hasKey( "RightColumnSummaries" ) )
     mRightColumnSummaries = config.readListEntry( "RightColumnSummaries" );
-  }
 }
 
 void SummaryViewPart::saveLayout()
