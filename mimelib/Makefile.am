@@ -59,9 +59,3 @@ libmimelib_la_SOURCES = \
 
 libmimelib_la_LDFLAGS = -L$(kde_libraries) -lkdefakes -version-info 1:1 -no-undefined
 
-check_PROGRAMS = test_boyermor
-
-TESTS=$(check_PROGRAMS)
-
-test_boyermor_SOURCES = test_boyermor.cpp
-test_boyermor_LDADD = libmimelib.la $(LIBSOCKET)

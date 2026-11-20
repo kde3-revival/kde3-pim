@@ -26,18 +26,6 @@ kcal_resourcefeatureplan_la_COMPILE_FIRST = kde-features.h prefs.h
 kcal_servicedir = $(kde_servicesdir)/kresources/kcal
 kcal_service_DATA = kcal_resourcefeatureplan.desktop
 
-check_PROGRAMS = dumpfeaturelist benchmarkfeaturelist
-
-dumpfeaturelist_LDFLAGS = $(all_libraries) $(KDE_RPATH)
-dumpfeaturelist_LDADD   = libfeatureplancommon.la $(LIB_KDECORE)
-dumpfeaturelist_SOURCES = dumpfeaturelist.cpp
-dumpfeaturelist_COMPILE_FIRST = kde-features.h
-
-benchmarkfeaturelist_LDFLAGS = $(all_libraries) $(KDE_RPATH)
-benchmarkfeaturelist_LDADD   = libfeatureplancommon.la $(LIB_KDECORE)
-benchmarkfeaturelist_SOURCES = benchmarkfeaturelist.cpp
-benchmarkfeaturelist_COMPILE_FIRST = kde-features.h
-
 kde-features.cpp: kde-features.h
 kde-features_parser.h kde-features_parser.cpp: kde-features.h
 

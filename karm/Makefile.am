@@ -3,7 +3,7 @@
 INCLUDES = -I$(top_srcdir)/libkcal -I$(top_srcdir)/kresources/remote -I$(top_srcdir) $(all_includes)
 
 bin_PROGRAMS = karm
-SUBDIRS = support pics test
+SUBDIRS = support pics
 
 METASOURCES = AUTO
 

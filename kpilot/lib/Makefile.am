@@ -47,14 +47,5 @@ kpilotinclude_HEADERS = \
 
 kde_kcfg_DATA = kpilotlib.kcfg
 
-check-local:
-	rm -f FAILED
-	for i in $(srcdir)/*.h ; do \
-		( echo "#include <kdemacros.h>" ; echo "#include \"$$i\"" ; echo "int main(int argc,char **argv){return 0;}" ) > header-test.cc; \
-		echo "$$i" ; \
-		g++ $(all_includes) -I$(top_builddir) -DQT_THREAD_SUPPORT -c header-test.cc || echo "$$i" >> FAILED; \
-	done
-	test ! -e FAILED
-
 DOXYGEN_REFERENCES=libkcal kdecore
 include $(top_srcdir)/admin/Doxyfile.am

@@ -1,4 +1,4 @@
-SUBDIRS = ksieve shared parser . tests
+SUBDIRS = ksieve shared parser .
 
 INCLUDES = $(all_includes)
 

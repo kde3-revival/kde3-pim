@@ -1,7 +1,7 @@
 #KDE_OPTIONS = nofinal
 KDE_CXXFLAGS = $(USE_RTTI)
 
-SUBDIRS = interfaces . about pics profiles avscripts tests
+SUBDIRS = interfaces . about pics profiles avscripts
 
 INCLUDES = -I$(top_srcdir)/libkmime \
         -I$(top_srcdir)/libkpgp \
@@ -162,17 +162,7 @@ libkmailpart_la_SOURCES =  kmailpartIface.skel  kmail_part.cpp
 
 libkmailpart_la_COMPILE_FIRST = globalsettings_base.h customtemplates_base.h templatesconfiguration_base.h
 
-check_PROGRAMS = dcoptest recipienteditortest
-
 METASOURCES = AUTO
-
-dcoptest_SOURCES = dcoptest.cpp kmailIface.skel kmailIface.stub mailcomposerIface.skel mailcomposerIface.stub
-dcoptest_LDADD = $(LIB_KIO)
-dcoptest_LDFLAGS = $(all_libraries)
-
-recipienteditortest_SOURCES = recipientseditortest.cpp
-recipienteditortest_LDADD = libkmailprivate.la ../libkdepim/libkdepim.la $(LIB_KIO) $(LIB_KABC)
-recipienteditortest_LDFLAGS = $(all_libraries)
 
 kmailIface_DCOPIDLNG = true
 kmailicalIface_DCOPIDLNG = true

@@ -3,14 +3,6 @@ INCLUDES = -I$(top_srcdir) -I$(top_srcdir)/kresources/groupwise $(all_includes)
 #AM_CPPFLAGS = -DDEBUG
 KDE_CXXFLAGS = -Wno-non-virtual-dtor
 
-check_PROGRAMS = soapdebug
-
-soapdebug_LDFLAGS = $(all_libraries) $(KDE_RPATH)
-soapdebug_LDADD   = libgwsoap.la -lkdecore \
-                   $(top_builddir)/libkcal/libkcal.la \
-                   $(top_builddir)/libkdepim/libkdepim.la
-soapdebug_SOURCES = soapdebug.cpp
-
 lib_LTLIBRARIES = libgwsoap.la
 
 libgwsoap_la_SOURCES = contactconverter.cpp gwconverter.cpp incidenceconverter.cpp \

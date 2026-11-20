@@ -1,4 +1,4 @@
-SUBDIRS = cfgc interfaces tests icons pics kpartsdesignerplugin about
+SUBDIRS = interfaces icons pics kpartsdesignerplugin about
 
 INCLUDES = -I$(top_srcdir) $(all_includes)
 

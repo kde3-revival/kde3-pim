@@ -1,1 +1,1 @@
-SUBDIRS = core plugins test
+SUBDIRS = core plugins

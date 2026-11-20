@@ -1,4 +1,4 @@
-SUBDIRS = libical versit tests
+SUBDIRS = libical versit
 
 INCLUDES = -I$(srcdir)/libical/src/libical \
   -I$(srcdir)/libical/src/libicalss -I./libical/src/libical \

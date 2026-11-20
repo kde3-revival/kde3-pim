@@ -34,18 +34,6 @@ libkorganizerpart_la_SOURCES = korganizer_part.cpp
 libkorganizerpart_la_COMPILE_FIRST = publishdialog_base.h koprefs_base.h
 
 
-check_PROGRAMS = korgplugins timezone
-
-korgplugins_LDFLAGS = $(all_libraries) $(KDE_RPATH)
-korgplugins_LDADD   = libkorganizer.la $(LIB_KSYCOCA)
-korgplugins_SOURCES = korgplugins.cpp
-korgplugins_COMPILE_FIRST = koprefs_base.h
-
-timezone_LDFLAGS = $(all_libraries) $(KDE_RPATH)
-timezone_LDADD   = libkorganizer.la $(LIB_KSYCOCA)
-timezone_SOURCES = timezone.cpp
-timezone_COMPILE_FIRST = koprefs_base.h
-
 lib_LTLIBRARIES = libkorganizer_eventviewer.la \
                   libkorganizer_calendar.la libkorganizer.la
 

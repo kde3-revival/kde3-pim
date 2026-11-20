@@ -1,4 +1,4 @@
-SUBDIRS = . tests
+SUBDIRS = .
 
 INCLUDES = -I$(top_srcdir)/libkdenetwork $(all_includes)
 

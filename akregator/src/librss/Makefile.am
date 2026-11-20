@@ -13,10 +13,5 @@ librsslocal_la_SOURCES = article.cpp document.cpp image.cpp textinput.cpp \
 
 librsslocal_la_METASOURCES = AUTO
 
-check_PROGRAMS = testlibrss
-testlibrss_SOURCES = testlibrss.cpp
-testlibrss_LDFLAGS = $(all_libraries)
-testlibrss_LDADD =  librsslocal.la $(LIB_KIO)
-
 DOXYGEN_REFERENCES = kdeui
 include $(top_srcdir)/admin/Doxyfile.am

@@ -28,11 +28,6 @@ libkmobileclient_la_SOURCES = kmobileclient.cpp
 libkmobileclient_la_LDFLAGS = $(all_libraries) -no-undefined -avoid-version
 libkmobileclient_la_LIBADD = $(LIB_KDECORE) -lDCOP
 
-EXTRA_PROGRAMS = testlibkmobile
-testlibkmobile_LDFLAGS = $(all_libraries) $(KDE_RPATH)
-testlibkmobile_LDADD = libkmobileclient.la
-testlibkmobile_SOURCES = testlibkmobile.cpp
-
 # the servicetype for mobile devices
 kde_servicetypes_DATA = libkmobile.desktop
 

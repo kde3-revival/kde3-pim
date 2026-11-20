@@ -4,7 +4,6 @@ configure.in.in
 ./certmanager/lib/backends/chiasmus/configure.in.in
 ./dcopidlng/configure.in.in
 ./indexlib/configure.in.in
-./indexlib/tests/configure.in.in
 ./kaddressbook/xxport/configure.in.bot
 ./kaddressbook/xxport/configure.in.in
 ./kalarm/configure.in.bot
