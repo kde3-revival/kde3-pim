@@ -1,5 +1,4 @@
-SUBDIRS = ktnef lib gui
+SUBDIRS = ktnef lib
 
-messages: rc.cpp
-	$(EXTRACTRC) gui/*.rc gui/*.ui >> rc.cpp
-	$(XGETTEXT) rc.cpp gui/*.cpp lib/*.cpp -o $(podir)/ktnef.pot
+messages:
+	$(XGETTEXT) lib/*.cpp -o $(podir)/ktnef.pot

@@ -1,6 +1,5 @@
 doc
 indexlib
-kabc
 kdgantt
 kmailcvt
 ktnef
@@ -10,7 +9,6 @@ libkmime
 libkpgp
 libksieve
 mimelib
-networkstatus
 pixmaps
 libemailfunctions
 certmanager
