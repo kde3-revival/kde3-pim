@@ -11,7 +11,7 @@ if compile_GNOKIIXXPORT
 endif
 
 kde_module_LTLIBRARIES = libkaddrbk_csv_xxport.la libkaddrbk_vcard_xxport.la \
-                         libkaddrbk_kde2_xxport.la libkaddrbk_bookmark_xxport.la \
+                         libkaddrbk_bookmark_xxport.la \
                          libkaddrbk_eudora_xxport.la libkaddrbk_ldif_xxport.la \
                          libkaddrbk_opera_xxport.la libkaddrbk_pab_xxport.la $(gnokii_MODULE)
 
@@ -27,9 +27,6 @@ libkaddrbk_vcard_xxport_la_SOURCES = vcard_xxport.cpp
 libkaddrbk_vcard_xxport_la_LIBADD = $(XXLIBS) \
                                     $(top_builddir)/kaddressbook/libkaddressbook.la \
                                     $(top_builddir)/libkdenetwork/qgpgme/libqgpgme.la
-
-libkaddrbk_kde2_xxport_la_SOURCES = kde2_xxport.cpp
-libkaddrbk_kde2_xxport_la_LIBADD = $(XXLIBS)
 
 libkaddrbk_bookmark_xxport_la_SOURCES = bookmark_xxport.cpp
 libkaddrbk_bookmark_xxport_la_LIBADD = $(XXLIBS)
@@ -54,11 +51,11 @@ noinst_HEADERS = csvimportdialog.h
 METASOURCES = AUTO
 
 servicedir = $(kde_servicesdir)/kaddressbook
-service_DATA = csv_xxport.desktop vcard_xxport.desktop kde2_xxport.desktop \
+service_DATA = csv_xxport.desktop vcard_xxport.desktop \
                bookmark_xxport.desktop eudora_xxport.desktop ldif_xxport.desktop \
                gnokii_xxport.desktop opera_xxport.desktop pab_xxport.desktop
 
 rcdir = $(kde_datadir)/kaddressbook
-rc_DATA = csv_xxportui.rc vcard_xxportui.rc kde2_xxportui.rc \
+rc_DATA = csv_xxportui.rc vcard_xxportui.rc \
           bookmark_xxportui.rc eudora_xxportui.rc ldif_xxportui.rc \
           opera_xxportui.rc pab_xxportui.rc $(gnokii_RCFILE)
