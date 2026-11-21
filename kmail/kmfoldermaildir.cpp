@@ -943,11 +943,18 @@ int KMFolderMaildir::reconcileIndexWithContents()
       ++dropped;
     }
   }
+  // If no entry went away and no file has to be added, the messages keep
+  // their positions and the serial numbers read from the .ids file still
+  // apply, as long as they cover every message.
+  bool keepSerNums = dropped == 0 && files.isEmpty() && mExportsSernums;
   mMsgList.clear(false);
   mMsgList.reset(INIT_MSGS);
   for (QValueList<KMMsgBase*>::ConstIterator it = kept.begin();
-       it != kept.end(); ++it)
-    mMsgList.append(*it, false);
+       it != kept.end(); ++it) {
+    int idx = mMsgList.append(*it, false);
+    if (keepSerNums && !KMMsgDict::instance()->getMsgSerNum(folder(), idx))
+      keepSerNums = false;
+  }
 
   // and add the files the index does not know yet
   for (QMap<QString, int>::ConstIterator it = files.begin();
@@ -970,9 +977,10 @@ int KMFolderMaildir::reconcileIndexWithContents()
 
   writeIndex();
   needsCompact = true;
-  // the message positions may have changed, so the serial numbers in the
+  // otherwise the message positions changed, so the serial numbers in the
   // .ids file no longer apply
-  invalidateFolder();
+  if (!keepSerNums)
+    invalidateFolder();
   return 0;
 }
 
