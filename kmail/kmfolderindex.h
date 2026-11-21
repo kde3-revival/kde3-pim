@@ -110,6 +110,11 @@ private slots:
 protected:
   bool readIndex();
 
+  /** Like readIndex(), but with @p acceptDirty also reads an index that is
+      marked dirty (see markIndexDirty()), as long as its entries are
+      intact.  The caller must then check it against the folder contents. */
+  bool readIndexFile(bool acceptDirty);
+
   /** Read index header. Called from within readIndex(). */
   bool readIndexHeader(int *gv=0);
 

@@ -374,6 +374,11 @@ static bool isValidIndexEntry(const uchar *buf, int len, bool swapByteOrder,
 
 bool KMFolderIndex::readIndex()
 {
+  return readIndexFile(false);
+}
+
+bool KMFolderIndex::readIndexFile(bool acceptDirty)
+{
   Q_INT32 len;
   KMMsgInfo* mi;
 
@@ -387,7 +392,7 @@ bool KMFolderIndex::readIndex()
 
   if (!readIndexHeader(&version)) return false;
 
-  if (mIndexMarkedDirty) {
+  if (mIndexMarkedDirty && !acceptDirty) {
     kdWarning(5006) << "Index file " << indexLocation()
                     << " was not closed cleanly" << endl;
     return false;
@@ -490,7 +495,7 @@ bool KMFolderIndex::readIndex()
     setDirty( true );
     writeIndex();
   }
-  else if ( !mIndexStateOffset && mAutoCreateIndex )
+  else if ( !mIndexStateOffset && mAutoCreateIndex && !acceptDirty )
   {
     // written by an older KMail, without the clean/dirty state: rewrite it
     // now so that later changes are protected by the state

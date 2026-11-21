@@ -7,6 +7,8 @@
 #endif
 
 #include <qdir.h>
+#include <qmap.h>
+#include <qvaluelist.h>
 #include <qregexp.h>
 
 #include <libkdepim/kfileio.h>
@@ -135,10 +137,15 @@ int KMFolderMaildir::open(const char *)
     if (!mIndexStream)
       rc = createIndexFromContents();
     else if (!readIndex()) {
-      // the index is corrupt (e.g. truncated by a crash): rebuild it
       emit statusMsg(i18n("Folder `%1' changed; recreating index.")
                      .arg(name()));
-      rc = createIndexFromContents();
+      if (mIndexMarkedDirty && readIndexFile(true))
+        // KMail did not close the index cleanly, but its entries are
+        // intact: keep them for the files that are still there
+        rc = reconcileIndexWithContents();
+      else
+        // the index is corrupt (e.g. truncated by a crash): rebuild it
+        rc = createIndexFromContents();
     }
   }
   else
@@ -899,6 +906,73 @@ int KMFolderMaildir::createIndexFromContents()
 
   needsCompact = true;
 
+  invalidateFolder();
+  return 0;
+}
+
+int KMFolderMaildir::reconcileIndexWithContents()
+{
+  QDir curDir(location() + "/cur");
+  QDir newDir(location() + "/new");
+  if (!curDir.exists() || !newDir.exists())
+    return createIndexFromContents();
+  curDir.setFilter(QDir::Files);
+  newDir.setFilter(QDir::Files);
+
+  // file name -> 0 if in cur/, 1 if in new/
+  QMap<QString, int> files;
+  QStringList list = curDir.entryList();
+  for (QStringList::ConstIterator it = list.begin(); it != list.end(); ++it)
+    files.insert(*it, 0);
+  list = newDir.entryList();
+  for (QStringList::ConstIterator it = list.begin(); it != list.end(); ++it)
+    files.insert(*it, 1);
+
+  // keep the entries whose files still exist (each one only once)
+  QValueList<KMMsgBase*> kept;
+  int dropped = 0;
+  for (unsigned int i = 0; i < mMsgList.high(); ++i) {
+    KMMsgBase *mb = mMsgList.at(i);
+    if (!mb)
+      continue;
+    QMap<QString, int>::Iterator f = files.find(mb->fileName());
+    if (f != files.end()) {
+      files.remove(f);
+      kept.append(mb);
+    } else {
+      delete mb;
+      ++dropped;
+    }
+  }
+  mMsgList.clear(false);
+  mMsgList.reset(INIT_MSGS);
+  for (QValueList<KMMsgBase*>::ConstIterator it = kept.begin();
+       it != kept.end(); ++it)
+    mMsgList.append(*it, false);
+
+  // and add the files the index does not know yet
+  for (QMap<QString, int>::ConstIterator it = files.begin();
+       it != files.end(); ++it)
+    readFileHeaderIntern(it.data() ? newDir.path() : curDir.path(), it.key(),
+                         it.data() ? KMMsgStatusNew : KMMsgStatusRead);
+
+  kdWarning(5006) << "Index file " << indexLocation()
+                  << " reconciled with the folder: " << dropped
+                  << " entries dropped, " << files.count() << " added" << endl;
+
+  mUnreadMsgs = 0;
+  for (unsigned int i = 0; i < mMsgList.high(); ++i) {
+    KMMsgBase *mb = mMsgList.at(i);
+    if (mb && (mb->isNew() || mb->isUnread() ||
+               folder() == kmkernel->outboxFolder()))
+      ++mUnreadMsgs;
+  }
+  mTotalMsgs = mMsgList.count();
+
+  writeIndex();
+  needsCompact = true;
+  // the message positions may have changed, so the serial numbers in the
+  // .ids file no longer apply
   invalidateFolder();
   return 0;
 }

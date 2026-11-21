@@ -147,6 +147,11 @@ private slots:
   void slotDirSizeJobResult( KIO::Job* job );
 
 private:
+  /** Bring the message list read from an index that was not closed cleanly
+      in line with the files of the folder and rewrite the index.  Unlike
+      createIndexFromContents() this keeps the status of the messages that
+      are still there. */
+  int reconcileIndexWithContents();
   void readFileHeaderIntern(const QString& dir, const QString& file, KMMsgStatus status);
   QString moveInternal(const QString& oldLoc, const QString& newLoc, KMMsgInfo* mi);
   QString moveInternal(const QString& oldLoc, const QString& newLoc, QString& aFileName, KMMsgStatus status);
