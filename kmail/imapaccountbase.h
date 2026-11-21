@@ -253,6 +253,9 @@ namespace KMail {
      */
     void disconnectForSleep();
 
+    /** An error dialog of this account is open (in a nested event loop). */
+    bool errorDialogIsActive() const { return mErrorDialogIsActive; }
+
     /**
      * Abort all running mail checks. Used when exiting.
      */
@@ -562,6 +565,11 @@ namespace KMail {
     KMMessage* mCurrentMsg;
 
     QGuardedPtr<KPIM::ProgressItem> mListDirProgressItem;
+
+    // incremented by killAllJobs(): lets handleError() see that the jobs
+    // were killed while its dialog was open
+    unsigned int mKillAllJobsCount;
+
     // our namespaces in the form section=namespaceList
     nsMap mNamespaces;
 

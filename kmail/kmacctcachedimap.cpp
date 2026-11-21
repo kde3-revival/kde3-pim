@@ -129,6 +129,7 @@ void KMAcctCachedImap::killAllJobs( bool disconnectSlave )
 // Common between killAllJobs and the destructor - which shouldn't call sendFolderComplete
 QValueList<KMFolderCachedImap*> KMAcctCachedImap::killAllJobsInternal( bool disconnectSlave )
 {
+  ++mKillAllJobsCount;
   // Make list of folders to reset. This must be done last, since folderComplete
   // can trigger the next queued mail check already.
   QValueList<KMFolderCachedImap*> folderList;

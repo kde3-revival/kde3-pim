@@ -101,7 +101,8 @@ namespace KMail {
       mSlaveConnected( false ),
       mSlaveConnectionError( false ),
       mCheckingSingleFolder( false ),
-      mListDirProgressItem( 0 )
+      mListDirProgressItem( 0 ),
+      mKillAllJobsCount( 0 )
   {
     mPort = imapDefaultPort;
     mBodyPartList.setAutoDelete(true);
@@ -940,6 +941,12 @@ namespace KMail {
       break;
     }
 
+    // The dialogs below run a nested event loop.  If the jobs get killed
+    // meanwhile (the user aborts, another error, the machine goes to
+    // sleep), the caller must not continue with its job: it is gone, and
+    // a new check may already be running.
+    const unsigned int killCountBefore = mKillAllJobsCount;
+
     // check if we still display an error
     if ( !mErrorDialogIsActive && errorCode != KIO::ERR_USER_CANCELED ) {
       mErrorDialogIsActive = true;
@@ -981,6 +988,8 @@ namespace KMail {
       if ( mErrorDialogIsActive )
         kdDebug(5006) << "suppressing error:" << errorMsg << endl;
     }
+    if ( mKillAllJobsCount != killCountBefore )
+      jobsKilled = true;
     if ( job && !jobsKilled )
       removeJob( job );
     return !jobsKilled; // jobsKilled==false -> continue==true

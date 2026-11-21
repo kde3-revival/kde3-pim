@@ -141,6 +141,7 @@ bool KMAcctImap::handleError( int errorCode, const QString &errorMsg, KIO::Job* 
 //-----------------------------------------------------------------------------
 void KMAcctImap::killAllJobs( bool disconnectSlave )
 {
+  ++mKillAllJobsCount;
   QMap<KIO::Job*, jobData>::Iterator it = mapJobData.begin();
   for ( ; it != mapJobData.end(); ++it)
   {

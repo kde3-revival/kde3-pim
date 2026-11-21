@@ -450,6 +450,15 @@ void AccountManager::checkMailAfterResume()
 {
   if ( !mSleeping )
     return;
+  // an error dialog runs a nested event loop: do not start checks under it
+  for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it ) {
+    ImapAccountBase *imap = dynamic_cast<ImapAccountBase*>( *it );
+    if ( imap && imap->errorDialogIsActive() ) {
+      kdDebug(5006) << "error dialog of " << imap->name() << " open, checking mail later" << endl;
+      mResumeTimer.start( 5 * 1000, true );
+      return;
+    }
+  }
   mSleeping = false;
   for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it ) {
     KMAccount *acct = *it;
