@@ -134,6 +134,8 @@ protected:
   bool assureBox (const QString & aBox, bool readonly);
 
   ssize_t myRead(void *data, ssize_t len);
+  /** Report the broken connection (once) and close it. */
+  void connectionLost(int errorCode);
 
   /**
    * @brief Parses the given URL
@@ -198,6 +200,9 @@ private:
 
   char readBuffer[IMAP_BUFFER];
   ssize_t readBufferLen;
+  /** The broken connection has been reported to the application; cleared
+      when makeLogin() connects again. */
+  bool mConnectionErrorReported;
   int readSize;
   QDateTime mTimeOfLastNoop;
 };

@@ -171,6 +171,7 @@ IMAP4Protocol::IMAP4Protocol (const QCString & pool, const QCString & app, bool 
   readBuffer[0] = 0x00;
   relayEnabled = false;
   readBufferLen = 0;
+  mConnectionErrorReported = false;
   cacheOutput = false;
   decodeContent = false;
   mTimeOfLastNoop = QDateTime();
@@ -320,8 +321,8 @@ IMAP4Protocol::get (const KURL & _url)
         while (pl != -1 && !cmd->isComplete ());
         if (pl == -1)
         {
-          // parseReadLine() has reported the error and closed the connection
           relayEnabled = false;
+          connectionLost (ERR_CONNECTION_BROKEN);
           return;
         }
         completeQueue.removeRef (cmd);
@@ -384,9 +385,9 @@ IMAP4Protocol::get (const KURL & _url)
       while (cmd && !cmd->isComplete ());
       if (res == -1)
       {
-        // parseReadLine() has reported the error and closed the connection
         relayEnabled = false;
         cacheOutput = false;
+        connectionLost (ERR_CONNECTION_BROKEN);
         return;
       }
       if (aEnum == ITYPE_BOX || aEnum == ITYPE_DIR_AND_BOX)
@@ -613,7 +614,10 @@ IMAP4Protocol::listDir (const KURL & _url)
           int pl;
           while (!(pl = parseLoop ())) ;
           if (pl == -1)
-            return; // parseReadLine() has reported the error
+          {
+            connectionLost (ERR_CONNECTION_BROKEN);
+            return;
+          }
 
           cache = getLastHandled ();
 
@@ -693,9 +697,7 @@ bool IMAP4Protocol::parseRead(QByteArray & buffer, ulong len, ulong relay)
     {
       const bool timedOut = readLen < 0 && errno == ETIMEDOUT;
       kdDebug(7116) << "parseRead: readLen == " << readLen << " - connection broken" << endl;
-      error (timedOut ? ERR_SERVER_TIMEOUT : ERR_CONNECTION_BROKEN, myHost);
-      setState(ISTATE_CONNECT);
-      closeConnection();
+      connectionLost (timedOut ? ERR_SERVER_TIMEOUT : ERR_CONNECTION_BROKEN);
       return FALSE;
     }
     if (relay > buffer.size())
@@ -722,10 +724,9 @@ bool IMAP4Protocol::parseRead(QByteArray & buffer, ulong len, ulong relay)
 bool IMAP4Protocol::parseReadLine (QByteArray & buffer, ulong relay)
 {
   if (myHost.isEmpty()) return FALSE;
-  // The connection broke (and the error went out) while parsing the
-  // current response, e.g. in parseRead() in the middle of a literal:
-  // report it only once.
-  if (getState() == ISTATE_NO && readBufferLen <= 0) return FALSE;
+  // The connection broke while parsing the current response, e.g. in
+  // parseRead() in the middle of a literal: the error is out already.
+  if (mConnectionErrorReported) return FALSE;
 
   while (true) {
     ssize_t copyLen = 0;
@@ -763,33 +764,46 @@ bool IMAP4Protocol::parseReadLine (QByteArray & buffer, ulong relay)
     if (!isConnectionValid())
     {
       kdDebug(7116) << "parseReadLine - connection broken" << endl;
-      error (ERR_CONNECTION_BROKEN, myHost);
-      setState(ISTATE_CONNECT);
-      closeConnection();
+      connectionLost (ERR_CONNECTION_BROKEN);
       return FALSE;
     }
     if (!waitForResponse( responseTimeout() ))
     {
-      error(ERR_SERVER_TIMEOUT, myHost);
-      setState(ISTATE_CONNECT);
-      closeConnection();
+      connectionLost (ERR_SERVER_TIMEOUT);
       return FALSE;
     }
     readBufferLen = read(readBuffer, IMAP_BUFFER - 1);
-    if (readBufferLen == 0)
+    const int readError = errno;
+    if (readBufferLen < 0 && readError == EINTR)
     {
-      kdDebug(7116) << "parseReadLine: readBufferLen == 0 - connection broken" << endl;
-      error (ERR_CONNECTION_BROKEN, myHost);
-      setState(ISTATE_CONNECT);
-      closeConnection();
+      readBufferLen = 0; // a signal: wait again
+      continue;
+    }
+    if (readBufferLen <= 0)
+    {
+      // EOF, or an error: also one of KSSL::read(), when the raw socket
+      // still looks fine to isConnectionValid()
+      kdDebug(7116) << "parseReadLine: read() returned " << readBufferLen << " - connection broken" << endl;
+      const bool timedOut = readBufferLen < 0 && readError == ETIMEDOUT;
+      readBufferLen = 0; // myRead() would memcpy with -1
+      connectionLost (timedOut ? ERR_SERVER_TIMEOUT : ERR_CONNECTION_BROKEN);
       return FALSE;
     }
-    // read() failed (EINTR, or an error isConnectionValid() reports next
-    // time round): do not leave -1 in readBufferLen, myRead() would memcpy
-    // with it
-    if (readBufferLen < 0)
-      readBufferLen = 0;
   }
+}
+
+void
+IMAP4Protocol::connectionLost (int errorCode)
+{
+  // exactly one error per broken connection, whoever notices it
+  if (!mConnectionErrorReported)
+  {
+    error (errorCode, myHost);
+    mConnectionErrorReported = true;
+  }
+  // also after a "* BYE", which left ISTATE_NO with the socket open
+  setState(ISTATE_CONNECT);
+  closeConnection();
 }
 
 void
@@ -888,9 +902,8 @@ IMAP4Protocol::put (const KURL & _url, int, bool, bool)
       if ( getState() == ISTATE_NO ) {
         // TODO KDE4: pass cmd->resultInfo() as third argument.
         // ERR_CONNECTION_BROKEN expects a host, no way to pass details about the problem.
-        error( ERR_CONNECTION_BROKEN, myHost );
         completeQueue.removeRef (cmd);
-        closeConnection();
+        connectionLost (ERR_CONNECTION_BROKEN);
         return;
       }
       else if (cmd->result () != "OK") {
@@ -1269,7 +1282,10 @@ IMAP4Protocol::special (const QByteArray & aData)
     // NOOP
     imapCommand *cmd = doCommand(imapCommand::clientNoop());
     if (!cmd->isComplete ())
-      return; // parseReadLine() has reported the error
+    {
+      connectionLost (ERR_CONNECTION_BROKEN);
+      return;
+    }
     if (cmd->result () != "OK")
     {
       kdDebug(7116) << "NOOP did not succeed - connection broken" << endl;
@@ -1661,7 +1677,10 @@ IMAP4Protocol::specialCustomCommand( QDataStream& stream )
     }
     while (pl != -1 && !cmd->isComplete ());
     if (pl == -1)
-      return; // parseReadLine() has reported the error
+    {
+      connectionLost (ERR_CONNECTION_BROKEN);
+      return;
+    }
 
     completeQueue.removeRef (cmd);
 
@@ -2057,6 +2076,8 @@ bool IMAP4Protocol::makeLogin ()
 //      fcntl (m_iSock, F_SETFL, (fcntl (m_iSock, F_GETFL) | O_NDELAY));
 
     setState(ISTATE_CONNECT);
+    if (!alreadyConnected)
+      mConnectionErrorReported = false;
 
     myAuth = metaData("auth");
     myTLS  = metaData("tls");
@@ -2162,17 +2183,18 @@ bool IMAP4Protocol::makeLogin ()
           myPass = authInfo.password;
         }
       }
-      if (!clientLogin (myUser, myPass, resultInfo))
+      if (!clientLogin (myUser, myPass, resultInfo) && !mConnectionErrorReported)
         error(KIO::ERR_COULD_NOT_AUTHENTICATE, i18n("Unable to login. Probably the "
         "password is wrong.\nThe server %1 replied:\n%2").arg(myHost).arg(resultInfo));
     }
     else
     {
 #ifdef HAVE_LIBSASL2
-      if (!clientAuthenticate (this, authInfo, myHost, myAuth, mySSL, resultInfo))
-        error(KIO::ERR_COULD_NOT_AUTHENTICATE, i18n("Unable to authenticate via %1.\n"
+      if (!clientAuthenticate (this, authInfo, myHost, myAuth, mySSL, resultInfo)) {
+        if (!mConnectionErrorReported)
+          error(KIO::ERR_COULD_NOT_AUTHENTICATE, i18n("Unable to authenticate via %1.\n"
 	"The server %2 replied:\n%3").arg(myAuth).arg(myHost).arg(resultInfo));
-      else {
+      } else {
         myUser = authInfo.username;
         myPass = authInfo.password;
       }
