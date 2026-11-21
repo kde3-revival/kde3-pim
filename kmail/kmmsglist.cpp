@@ -128,6 +128,18 @@ void KMMsgList::insert(unsigned int idx, KMMsgBase* aMsg, bool syncDict)
 
 
 //-----------------------------------------------------------------------------
+int KMMsgList::indexOf(const KMMsgBase* aMsg) const
+{
+  if (!aMsg)
+    return find(0);
+  for (int i = (int)mHigh - 1; i >= 0; i--)
+    if (at(i) == aMsg)
+      return i;
+  // not expected: a message after the first unused index
+  return mHigh < size() ? find((KMMsgBase*)aMsg, mHigh) : -1;
+}
+
+//-----------------------------------------------------------------------------
 unsigned int KMMsgList::append(KMMsgBase* aMsg, bool syncDict)
 {
   const unsigned int idx = mHigh;

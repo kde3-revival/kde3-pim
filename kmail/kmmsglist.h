@@ -85,6 +85,12 @@ public:
   /** Number of messages in the array. */
   unsigned int count() const { return mCount; }
 
+  /** Returns the index of @p msg, or -1 if it is not in the array.  The
+      same as find(), but it searches from the last message down: a message
+      is in the array at most once, and the messages looked up are often the
+      ones just appended (while a folder is filled). */
+  int indexOf(const KMMsgBase* msg) const;
+
 protected:
   /** Set mHigh to proper value */
   void rethinkHigh();
