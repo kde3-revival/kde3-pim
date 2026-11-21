@@ -2112,7 +2112,16 @@ bool IMAP4Protocol::makeLogin ()
 
     setState(ISTATE_CONNECT);
     if (!alreadyConnected)
+    {
       mConnectionErrorReported = false;
+      // Nothing of an earlier connection belongs to this one: commands
+      // sent after it broke (e.g. the rest of a login whose greeting never
+      // came) are still in sentQueue, and the parser would match this
+      // server's replies against them.
+      sentQueue.clear();
+      completeQueue.clear();
+      readBufferLen = 0;
+    }
 
     myAuth = metaData("auth");
     myTLS  = metaData("tls");
@@ -2121,7 +2130,13 @@ bool IMAP4Protocol::makeLogin ()
     imapCommand *cmd;
 
     unhandled.clear ();
-    if (!alreadyConnected) while (!parseLoop ()) ;    //get greeting
+    if (!alreadyConnected)
+    {
+      int pl;
+      while (!(pl = parseLoop ())) ;    //get greeting
+      if (pl == -1)
+        return false; // connectionLost() has reported it
+    }
     QString greeting;
     if (!unhandled.isEmpty()) greeting = unhandled.first().stripWhiteSpace();
     unhandled.clear ();       //get rid of it
