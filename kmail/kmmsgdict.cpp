@@ -605,16 +605,19 @@ int KMMsgDict::appendToFolderIds( FolderStorage& storage, int index)
 
   count++;
 
+  Q_UINT32 diskCount = count;
   if (rentry->swapByteOrder)
-     count = kmail_swap_32(count);
+     diskCount = kmail_swap_32(diskCount);
   fseek(fp, rentry->baseOffset, SEEK_SET);
-  if (!fwrite(&count, sizeof(count), 1, fp)) {
+  if (!fwrite(&diskCount, sizeof(diskCount), 1, fp)) {
     kdDebug(5006) << "Dict cannot write count for folder " << storage.label() << ": "
                   << strerror(errno) << " (" << errno << ")" << endl;
     return 0;
   }
 
-  long ofs = (count - 1) * sizeof(ulong);
+  // The entries are Q_UINT32, as written by writeFolderIds() and read by
+  // readFolderIds().
+  long ofs = (count - 1) * sizeof(Q_UINT32);
   if (ofs > 0)
     fseek(fp, ofs, SEEK_CUR);
 
