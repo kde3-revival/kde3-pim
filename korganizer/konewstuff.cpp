@@ -60,6 +60,25 @@ bool KONewStuff::install( const QString &fileName )
     return false;
   }
 
+  // The calendars come from anyone: keep only alarms that display a
+  // message. The alarm daemon runs procedure alarms without asking, and
+  // would play sound files or send mail named by the calendar.
+  bool stripped = false;
+  Incidence::List incidences = cal.rawIncidences();
+  for ( Incidence::List::ConstIterator inc = incidences.begin(); inc != incidences.end(); ++inc ) {
+    Alarm::List alarms = (*inc)->alarms();   // a copy: alarms are removed
+    for ( Alarm::List::ConstIterator a = alarms.begin(); a != alarms.end(); ++a ) {
+      if ( (*a)->type() != Alarm::Display ) {
+        (*inc)->removeAlarm( *a );
+        stripped = true;
+      }
+    }
+  }
+  if ( stripped && !storage.save() ) {
+    KMessageBox::error( mView, i18n("Could not load calendar.") );
+    return false;
+  }
+
   Event::List events = cal.events();
 
   QStringList eventList;
