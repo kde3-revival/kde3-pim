@@ -23,6 +23,8 @@
 #include "folderstorage.h"
 #include "kmmsglist.h"
 
+#include <qvaluevector.h>
+
 class QTimer;
 
 /**
@@ -116,6 +118,14 @@ protected:
       the intact entries before the first damaged one instead of failing.
       The caller must then check the result against the folder contents. */
   bool readIndexFile(bool acceptDirty, bool acceptPrefix);
+
+  /** Take the serial numbers of the messages of this folder out of the
+      message dictionary and return them by position (0 where a position
+      has none). */
+  QValueVector<unsigned long> takeSerNums();
+  /** Give @p msg at position @p idx the serial number @p serNum, or a new
+      one if @p serNum is 0. */
+  void setSerNum(unsigned long serNum, const KMMsgBase *msg, int idx);
 
   /** Why the last readIndex()/readIndexFile() failed. */
   enum IndexReadResult {

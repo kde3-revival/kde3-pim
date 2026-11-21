@@ -9,6 +9,7 @@
 #include <qdir.h>
 #include <qmap.h>
 #include <qvaluelist.h>
+#include <qvaluevector.h>
 #include <qregexp.h>
 
 #include <libkdepim/kfileio.h>
@@ -935,8 +936,16 @@ int KMFolderMaildir::reconcileIndexWithContents()
   for (QStringList::ConstIterator it = list.begin(); it != list.end(); ++it)
     files.insert(*it, 1);
 
+  // The serial numbers read from the .ids file, by position.  They are
+  // taken out of the message dictionary and given back to the messages
+  // that are kept, at their new positions.
+  QValueVector<unsigned long> serNums;
+  if (mExportsSernums)
+    serNums = takeSerNums();
+
   // keep the entries whose files still exist (each one only once)
   QValueList<KMMsgBase*> kept;
+  QValueList<unsigned long> keptSerNums;
   int dropped = 0;
   for (unsigned int i = 0; i < mMsgList.high(); ++i) {
     KMMsgBase *mb = mMsgList.at(i);
@@ -946,22 +955,20 @@ int KMFolderMaildir::reconcileIndexWithContents()
     if (f != files.end()) {
       files.remove(f);
       kept.append(mb);
+      keptSerNums.append(i < serNums.size() ? serNums[i] : 0);
     } else {
       delete mb;
       ++dropped;
     }
   }
-  // If no entry went away and no file has to be added, the messages keep
-  // their positions and the serial numbers read from the .ids file still
-  // apply, as long as they cover every message.
-  bool keepSerNums = dropped == 0 && files.isEmpty() && mExportsSernums;
   mMsgList.clear(false);
   mMsgList.reset(INIT_MSGS);
+  QValueList<unsigned long>::ConstIterator sn = keptSerNums.begin();
   for (QValueList<KMMsgBase*>::ConstIterator it = kept.begin();
-       it != kept.end(); ++it) {
+       it != kept.end(); ++it, ++sn) {
     int idx = mMsgList.append(*it, false);
-    if (keepSerNums && !KMMsgDict::instance()->getMsgSerNum(folder(), idx))
-      keepSerNums = false;
+    if (mExportsSernums)
+      setSerNum(*sn, *it, idx); // a new one if it had none
   }
 
   // and add the files the index does not know yet
@@ -983,12 +990,11 @@ int KMFolderMaildir::reconcileIndexWithContents()
   }
   mTotalMsgs = mMsgList.count();
 
-  writeIndex();
+  // the sort cache may refer to messages that are gone
+  if (dropped)
+    unlink(QFile::encodeName(indexLocation() + ".sorted"));
+  writeIndex(); // writes the .ids file as well
   needsCompact = true;
-  // otherwise the message positions changed, so the serial numbers in the
-  // .ids file no longer apply
-  if (!keepSerNums)
-    invalidateFolder();
   return 0;
 }
 

@@ -736,6 +736,28 @@ void KMFolderIndex::truncateIndex()
     writeIndex( true );
 }
 
+QValueVector<unsigned long> KMFolderIndex::takeSerNums()
+{
+  QValueVector<unsigned long> serNums;
+  KMMsgDict *dict = KMMsgDict::mutableInstance();
+  // the .ids file may cover more positions than the message list
+  for (unsigned int i = 0; ; ++i) {
+    unsigned long serNum = dict->getMsgSerNum(folder(), i);
+    if (!serNum && i >= mMsgList.high())
+      break;
+    serNums.push_back(serNum);
+    if (serNum)
+      dict->remove(serNum);
+  }
+  return serNums;
+}
+
+void KMFolderIndex::setSerNum(unsigned long serNum, const KMMsgBase *msg,
+                              int idx)
+{
+  KMMsgDict::mutableInstance()->insert(serNum, msg, idx);
+}
+
 void KMFolderIndex::fillMessageDict()
 {
   open("fillDict");
