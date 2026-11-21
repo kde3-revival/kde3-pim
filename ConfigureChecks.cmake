@@ -173,6 +173,23 @@ if(KDEPIM_WITH_GNOKII STREQUAL "" OR KDEPIM_WITH_GNOKII)
   endif()
 endif()
 
+# ---- kmail: suspend/resume through systemd-logind -------------------------------
+# KMail listens to logind's PrepareForSleep signal with GDBus (logindsleep.cpp);
+# the callbacks need Qt running on the GLib event loop (QT_GLIB_EVENTLOOP).
+set(KDEPIM_WITH_LOGIND "" CACHE STRING
+  "KMail disconnects before suspend (logind, GIO): empty = use it if found, OFF = do not use it, ON = require it")
+set(LIB_GIO_UNIX "")
+if(KDEPIM_WITH_LOGIND STREQUAL "" OR KDEPIM_WITH_LOGIND)
+  pkg_check_modules(GIO_UNIX QUIET IMPORTED_TARGET gio-unix-2.0)
+  if(GIO_UNIX_FOUND)
+    set(LIB_GIO_UNIX PkgConfig::GIO_UNIX)
+    set(HAVE_GIO_UNIX 1)
+  endif()
+  if(KDEPIM_WITH_LOGIND AND NOT LIB_GIO_UNIX)
+    message(FATAL_ERROR "KDEPIM_WITH_LOGIND was given, but gio-unix-2.0 was not found")
+  endif()
+endif()
+
 # ---- libkcal/libical (libkcal/libical/configure.in.in) --------------------------
 find_program(PERL_EXECUTABLE NAMES perl5 perl)
 if(NOT PERL_EXECUTABLE)
@@ -191,7 +208,8 @@ foreach(_what
     "HAVE_LIBSASL2:KDEPIM_WITH_SASL:cyrus-sasl 2 (the sieve ioslave is not built, imap4 lacks a lot of authentication methods)"
     "LIB_GNOKII:KDEPIM_WITH_GNOKII:libgnokii (the KDE Addressbook mobile phone import/export filter)"
     "HAVE_INDEXLIB:KDEPIM_INDEXLIB:KMail's experimental full-text indexing"
-    "HAVE_INOTIFY:KDEPIM_WITH_INOTIFY:Linux inode notifications")
+    "HAVE_INOTIFY:KDEPIM_WITH_INOTIFY:Linux inode notifications"
+    "LIB_GIO_UNIX:KDEPIM_WITH_LOGIND:gio-unix-2.0 (KMail does not disconnect before suspend)")
   string(REPLACE ":" ";" _what "${_what}")
   list(GET _what 0 _var)
   list(GET _what 1 _opt)

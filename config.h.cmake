@@ -96,6 +96,9 @@
 /* Define if you have gnokii.h */
 #cmakedefine HAVE_GNOKII_H 1
 
+/* Define if you have gio-unix-2.0 (KMail watches logind for suspend) */
+#cmakedefine HAVE_GIO_UNIX 1
+
 /* ---- libical ------------------------------------------------------ */
 
 /* unix newline */

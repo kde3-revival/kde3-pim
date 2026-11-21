@@ -21,7 +21,9 @@
 #define accountmanager_h
 
 #include <qobject.h>
+#include <qtimer.h>
 #include "kmaccount.h"
+#include "logindsleep.h"
 #include <kdepimmacros.h>
 
 class QString;
@@ -32,7 +34,7 @@ namespace KMail {
  * The account manager is responsible for creating accounts of various types
  * via the factory method create() and for keeping track of them.
  */
-class KDE_EXPORT AccountManager: public QObject
+class KDE_EXPORT AccountManager: public QObject, public LogindSleepListener
 {
   Q_OBJECT
   friend class ::KMAccount;
@@ -92,6 +94,12 @@ public:
   /** Read passwords of all accounts from the wallet */
   void readPasswords();
 
+  /** The machine is about to sleep: stop the mail checks and close the
+      connections to the servers, they would be dead after the wakeup. */
+  virtual void prepareForSleep();
+  /** The machine woke up: check mail again a little later. */
+  virtual void resumedFromSleep();
+
 public slots:
   void singleCheckMail( KMAccount *, bool interactive = true );
   void singleInvalidateIMAPFolders( KMAccount * );
@@ -102,6 +110,9 @@ public slots:
   /** this slot increases the count of new mails to show a total number
   after checking in multiple accounts. */
   void addToTotalNewMailCount( const QMap<QString, int> & newInFolder );
+
+private slots:
+  void checkMailAfterResume();
 
 
 signals:
@@ -135,6 +146,10 @@ private:
 
   // if a summary should be displayed
   bool mDisplaySummary;
+
+  // between prepareForSleep() and checkMailAfterResume()
+  bool mSleeping;
+  QTimer mResumeTimer;
 };
 
 } // namespace KMail

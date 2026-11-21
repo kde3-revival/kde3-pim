@@ -16,6 +16,7 @@
 #include "broadcaststatus.h"
 #include "kmfiltermgr.h"
 #include "globalsettings.h"
+#include "progressmanager.h"
 
 #include <klocale.h>
 #include <kmessagebox.h>
@@ -31,15 +32,18 @@ using namespace KMail;
 //-----------------------------------------------------------------------------
 AccountManager::AccountManager()
     :QObject(), mNewMailArrived( false ), mInteractive( false ),
-     mTotalNewMailsArrived( 0 ), mDisplaySummary( false )
+     mTotalNewMailsArrived( 0 ), mDisplaySummary( false ), mSleeping( false )
 {
   mAcctChecking.clear();
   mAcctTodo.clear();
+  connect( &mResumeTimer, SIGNAL( timeout() ), SLOT( checkMailAfterResume() ) );
+  watchLogindSleep( this );
 }
 
 //-----------------------------------------------------------------------------
 AccountManager::~AccountManager()
 {
+  unwatchLogindSleep();
   writeConfig( false );
 }
 
@@ -403,6 +407,56 @@ void AccountManager::readPasswords()
     NetworkAccount *acct = dynamic_cast<NetworkAccount*>( (*it) );
     if ( acct )
       acct->readPassword();
+  }
+}
+
+//-----------------------------------------------------------------------------
+void AccountManager::prepareForSleep()
+{
+  kdDebug(5006) << k_funcinfo << endl;
+  mSleeping = true;
+  mResumeTimer.stop();
+  // checks waiting for their turn would start as soon as the running
+  // ones are stopped
+  mAcctTodo.clear();
+  for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it ) {
+    KMAccount *acct = *it;
+    // the periodic checks would fire right after the wakeup, before the
+    // network is back
+    acct->deinstallTimer();
+    if ( ImapAccountBase *imap = dynamic_cast<ImapAccountBase*>( acct ) ) {
+      // what a broken connection does: kill the jobs, reset the folders,
+      // let the next access connect again; also drops an idle connection
+      imap->killAllJobs( true );
+    } else if ( acct->checkingMail() && acct->mailCheckProgressItem() ) {
+      // POP: abort the check as the user would
+      acct->mailCheckProgressItem()->cancel();
+    }
+  }
+  releaseLogindSleepDelay();
+}
+
+//-----------------------------------------------------------------------------
+void AccountManager::resumedFromSleep()
+{
+  kdDebug(5006) << k_funcinfo << endl;
+  // give the network some time to come back
+  mResumeTimer.start( 10 * 1000, true );
+}
+
+//-----------------------------------------------------------------------------
+void AccountManager::checkMailAfterResume()
+{
+  if ( !mSleeping )
+    return;
+  mSleeping = false;
+  for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it ) {
+    KMAccount *acct = *it;
+    if ( acct->checkInterval() <= 0 )
+      continue;
+    acct->installTimer();
+    if ( !kmkernel->isOffline() )
+      singleCheckMail( acct, false );
   }
 }
 

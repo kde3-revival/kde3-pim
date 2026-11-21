@@ -230,6 +230,7 @@ kde3_add_library(kmailprivate SHARED
     scalix.cpp
     messageactions.cpp
     korghelper.cpp
+    logindsleep.cpp
   MOC
     accountcombobox.h
     accountdialog.h
@@ -376,6 +377,7 @@ kde3_add_library(kmailprivate SHARED
     KDE3::khtml
     KDE3::kspell
     KDE3::kabc
+    ${LIB_GIO_UNIX}
 )
 
 kde3_add_module(kcm_kmail
