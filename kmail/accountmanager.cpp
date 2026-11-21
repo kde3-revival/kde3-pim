@@ -33,7 +33,8 @@ using namespace KMail;
 //-----------------------------------------------------------------------------
 AccountManager::AccountManager()
     :QObject(), mNewMailArrived( false ), mInteractive( false ),
-     mTotalNewMailsArrived( 0 ), mDisplaySummary( false ), mSleeping( false )
+     mTotalNewMailsArrived( 0 ), mDisplaySummary( false ), mSleeping( false ),
+     mResumeCheckPending( false ), mResumeCheckRetries( 0 )
 {
   mAcctChecking.clear();
   mAcctTodo.clear();
@@ -416,6 +417,7 @@ void AccountManager::prepareForSleep()
 {
   kdDebug(5006) << k_funcinfo << endl;
   mSleeping = true;
+  mResumeCheckPending = false;
   mResumeTimer.stop();
   // checks waiting for their turn would start as soon as the running
   // ones are stopped
@@ -446,42 +448,55 @@ void AccountManager::resumedFromSleep()
   for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it )
     if ( ImapAccountBase *imap = dynamic_cast<ImapAccountBase*>( *it ) )
       imap->resumedFromSleep();
-  // give the network some time to come back
+  if ( !mSleeping )
+    return; // e.g. the bus connection was lost while the machine was awake
+  mSleeping = false;
+  // The periodic checks right away, whatever else is going on: their
+  // first one comes a full interval from now, the network is back by then.
+  for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it )
+    ( *it )->installTimer(); // only for those that check periodically
+  // and one check now for the mail that came in meanwhile, after giving
+  // the network some time to come back
+  mResumeCheckPending = true;
+  mResumeCheckRetries = 0;
   mResumeTimer.start( 10 * 1000, true );
 }
 
 //-----------------------------------------------------------------------------
 void AccountManager::checkMailAfterResume()
 {
-  if ( !mSleeping )
+  if ( !mResumeCheckPending || mSleeping )
     return;
   // A modal dialog runs a nested event loop: the password dialog of
   // makeConnection(), a question of a cached IMAP sync, a POP message
   // box...  Its caller goes on when it is closed, perhaps with a job the
-  // sleep killed: do not start checks under it.
-  if ( QWidget *modal = QApplication::activeModalWidget() ) {
-    kdDebug(5006) << "modal dialog \"" << modal->caption() << "\" open, checking mail later" << endl;
+  // sleep killed: do not start checks under it.  An IMAP account's error
+  // dialog is one too.
+  QString dialog;
+  if ( QWidget *modal = QApplication::activeModalWidget() )
+    dialog = "modal dialog \"" + modal->caption() + "\"";
+  for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); dialog.isEmpty() && it != end; ++it ) {
+    ImapAccountBase *imap = dynamic_cast<ImapAccountBase*>( *it );
+    if ( imap && imap->errorDialogIsActive() )
+      dialog = "error dialog of " + imap->name();
+  }
+  if ( !dialog.isEmpty() ) {
+    // a dialog can stay open for good; the periodic checks run anyway
+    if ( ++mResumeCheckRetries >= 60 ) {
+      kdDebug(5006) << dialog << " still open, no check after the wakeup" << endl;
+      mResumeCheckPending = false;
+      return;
+    }
+    kdDebug(5006) << dialog << " open, checking mail later" << endl;
     mResumeTimer.start( 5 * 1000, true );
     return;
   }
-  // an error dialog runs a nested event loop: do not start checks under it
-  for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it ) {
-    ImapAccountBase *imap = dynamic_cast<ImapAccountBase*>( *it );
-    if ( imap && imap->errorDialogIsActive() ) {
-      kdDebug(5006) << "error dialog of " << imap->name() << " open, checking mail later" << endl;
-      mResumeTimer.start( 5 * 1000, true );
-      return;
-    }
-  }
-  mSleeping = false;
-  for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it ) {
-    KMAccount *acct = *it;
-    if ( acct->checkInterval() <= 0 )
-      continue;
-    acct->installTimer();
-    if ( !kmkernel->isOffline() )
-      singleCheckMail( acct, false );
-  }
+  mResumeCheckPending = false;
+  if ( kmkernel->isOffline() )
+    return;
+  for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it )
+    if ( ( *it )->checkInterval() > 0 )
+      singleCheckMail( *it, false );
 }
 
 #include "accountmanager.moc"

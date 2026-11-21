@@ -147,8 +147,12 @@ private:
   // if a summary should be displayed
   bool mDisplaySummary;
 
-  // between prepareForSleep() and checkMailAfterResume()
+  // between prepareForSleep() and resumedFromSleep()
   bool mSleeping;
+  // the check right after a wakeup is still to be done; mResumeTimer
+  // runs it, mResumeCheckRetries counts how often a dialog put it off
+  bool mResumeCheckPending;
+  int mResumeCheckRetries;
   QTimer mResumeTimer;
 };
 
