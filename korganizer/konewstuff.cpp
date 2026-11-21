@@ -22,7 +22,9 @@
 */
 
 #include <kapplication.h>
+#include <kconfig.h>
 #include <kdebug.h>
+#include <kglobal.h>
 
 #include <libkcal/calendarlocal.h>
 #include <libkcal/filestorage.h>
@@ -36,6 +38,15 @@ KONewStuff::KONewStuff( CalendarView *view ) :
   KNewStuff( "korganizer/calendar", view ),
   mView( view )
 {
+  // The calendars of the KDE Store ("KOrganizer Calendars", category 344),
+  // through its Open Collaboration Services API: the old hotstuff server
+  // (korganizer.kde.org) is gone. KNewStuff reads its provider from the
+  // application's configuration.
+  KConfig *config = KGlobal::config();
+  KConfigGroupSaver saver( config, "KNewStuff" );
+  config->writeEntry( "OcsUrl", "https://api.kde-look.org/ocs/v1/" );
+  config->writeEntry( "OcsCategories", "344" );
+  config->sync();
 }
 
 bool KONewStuff::install( const QString &fileName )
