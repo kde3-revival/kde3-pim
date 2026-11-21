@@ -25,7 +25,8 @@ public:
       releaseLogindSleepDelay() once ready, logind waits for that (at
       most InhibitDelayMaxSec, 5 s by default). */
   virtual void prepareForSleep() = 0;
-  /** The machine woke up (or the suspend failed). */
+  /** The machine woke up (or the suspend failed, or the connection to
+      the bus was lost: the wakeup may have gone unnoticed). */
   virtual void resumedFromSleep() = 0;
 };
 

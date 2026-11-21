@@ -129,6 +129,10 @@ void connectionClosed( GDBusConnection *, gboolean, GError *, gpointer )
     close( s->delayLock );
     s->delayLock = -1;
   }
+  // If this happened while the machine slept, PrepareForSleep(false) is
+  // lost: do not stay in the "sleeping" state for good (harmless when
+  // the machine was not about to sleep).
+  s->listener->resumedFromSleep();
 }
 
 void connected( GObject *, GAsyncResult *result, gpointer testBus )
