@@ -427,7 +427,8 @@ void AccountManager::prepareForSleep()
     if ( ImapAccountBase *imap = dynamic_cast<ImapAccountBase*>( acct ) ) {
       // what a broken connection does: kill the jobs, reset the folders,
       // let the next access connect again; also drops an idle connection
-      imap->killAllJobs( true );
+      // and cancels one that is being set up
+      imap->disconnectForSleep();
     } else if ( acct->checkingMail() && acct->mailCheckProgressItem() ) {
       // POP: abort the check as the user would
       acct->mailCheckProgressItem()->cancel();

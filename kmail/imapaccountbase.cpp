@@ -987,6 +987,23 @@ namespace KMail {
     }
 
   //-----------------------------------------------------------------------------
+  void ImapAccountBase::disconnectForSleep()
+  {
+    // A check waiting in makeConnection() == Connecting has no job yet,
+    // only a connectionResult() slot; once mSlave is reset the slave's
+    // connected/error signals are ignored and it would wait for ever.
+    const bool connecting = mSlave && !mSlaveConnected;
+    killAllJobs( true );
+    if ( mSlave ) {
+      KIO::Scheduler::disconnectSlave( mSlave );
+      mSlave = 0;
+    }
+    mSlaveConnected = false;
+    if ( connecting )
+      emit connectionResult( KIO::ERR_USER_CANCELED, QString::null );
+  }
+
+  //-----------------------------------------------------------------------------
   void ImapAccountBase::cancelMailCheck()
   {
     QMap<KIO::Job*, jobData>::Iterator it = mapJobData.begin();

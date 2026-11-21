@@ -247,6 +247,13 @@ namespace KMail {
     void killAllJobs( bool disconnectSlave=false ) = 0;
 
     /**
+     * The machine is about to sleep: kill the jobs and drop the
+     * connection, also one that is still being set up (whoever waits
+     * for connectionResult() gets ERR_USER_CANCELED).
+     */
+    void disconnectForSleep();
+
+    /**
      * Abort all running mail checks. Used when exiting.
      */
     virtual void cancelMailCheck();
@@ -555,7 +562,6 @@ namespace KMail {
     KMMessage* mCurrentMsg;
 
     QGuardedPtr<KPIM::ProgressItem> mListDirProgressItem;
-
     // our namespaces in the form section=namespaceList
     nsMap mNamespaces;
 
