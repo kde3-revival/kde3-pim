@@ -253,6 +253,9 @@ namespace KMail {
      */
     void disconnectForSleep();
 
+    /** The machine woke up: makeConnection() may connect again. */
+    void resumedFromSleep();
+
     /** An error dialog of this account is open (in a nested event loop). */
     bool errorDialogIsActive() const { return mErrorDialogIsActive; }
 
@@ -569,6 +572,10 @@ namespace KMail {
     // incremented by killAllJobs(): lets handleError() see that the jobs
     // were killed while its dialog was open
     unsigned int mKillAllJobsCount;
+
+    // between disconnectForSleep() and resumedFromSleep(): makeConnection()
+    // refuses to connect
+    bool mSleeping;
 
     // our namespaces in the form section=namespaceList
     nsMap mNamespaces;

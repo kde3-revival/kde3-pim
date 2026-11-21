@@ -102,7 +102,8 @@ namespace KMail {
       mSlaveConnectionError( false ),
       mCheckingSingleFolder( false ),
       mListDirProgressItem( 0 ),
-      mKillAllJobsCount( 0 )
+      mKillAllJobsCount( 0 ),
+      mSleeping( false )
   {
     mPort = imapDefaultPort;
     mBodyPartList.setAutoDelete(true);
@@ -272,6 +273,13 @@ namespace KMail {
 
   ImapAccountBase::ConnectionState ImapAccountBase::makeConnection()
   {
+    // The connection was dropped for the machine going to sleep; whoever
+    // got the ERR_USER_CANCELED from disconnectForSleep() and tries again
+    // must not set up a new one before the machine is down.
+    if ( mSleeping ) {
+      kdDebug(5006) << "makeConnection: " << name() << " is asleep" << endl;
+      return Error;
+    }
     if ( mSlave && mSlaveConnected ) {
       return Connected;
     }
@@ -309,6 +317,12 @@ namespace KMail {
       setPasswd( dlg.password(), dlg.keepPassword() );
       setLogin( dlg.username() );
       mAskAgain = false;
+      // the machine went to sleep while the dialog was open: also end the
+      // wait of whoever got Connecting meanwhile
+      if ( mSleeping ) {
+        emit connectionResult( KIO::ERR_USER_CANCELED, QString::null );
+        return Error;
+      }
     }
     // already waiting for a connection?
     if ( mSlave && !mSlaveConnected ) return Connecting;
@@ -1002,6 +1016,8 @@ namespace KMail {
     // only a connectionResult() slot; once mSlave is reset the slave's
     // connected/error signals are ignored and it would wait for ever.
     const bool connecting = mSlave && !mSlaveConnected;
+    // before anything below can call makeConnection() again
+    mSleeping = true;
     killAllJobs( true );
     if ( mSlave ) {
       KIO::Scheduler::disconnectSlave( mSlave );
@@ -1010,6 +1026,12 @@ namespace KMail {
     mSlaveConnected = false;
     if ( connecting )
       emit connectionResult( KIO::ERR_USER_CANCELED, QString::null );
+  }
+
+  //-----------------------------------------------------------------------------
+  void ImapAccountBase::resumedFromSleep()
+  {
+    mSleeping = false;
   }
 
   //-----------------------------------------------------------------------------

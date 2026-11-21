@@ -441,6 +441,10 @@ void AccountManager::prepareForSleep()
 void AccountManager::resumedFromSleep()
 {
   kdDebug(5006) << k_funcinfo << endl;
+  // let the IMAP accounts connect again, e.g. for a folder the user opens
+  for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it )
+    if ( ImapAccountBase *imap = dynamic_cast<ImapAccountBase*>( *it ) )
+      imap->resumedFromSleep();
   // give the network some time to come back
   mResumeTimer.start( 10 * 1000, true );
 }
