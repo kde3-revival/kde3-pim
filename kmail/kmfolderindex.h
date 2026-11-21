@@ -82,9 +82,18 @@ public:
 
   void recreateIndex();
 
+  /** Recreate the index from the folder contents once control returns to
+      the event loop.  Used when a damaged index entry is found while
+      reading it: recreating the index right away would delete the message
+      infos that are in use. */
+  void scheduleRecreateIndex();
+
 public slots:
   /** Incrementally update the index if possible else call writeIndex */
   virtual int updateIndex();
+
+private slots:
+  void slotRecreateIndex();
 
 protected:
   bool readIndex();
@@ -123,6 +132,7 @@ protected:
 
   uchar *mIndexStreamPtr;
   int mIndexStreamPtrLength, mIndexId;
+  bool mRecreateIndexPending;
   bool mIndexSwapByteOrder; // Index file was written with swapped byte order
   int mIndexSizeOfLong; // Index file was written with longs of this size
 };

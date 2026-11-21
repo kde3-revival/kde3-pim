@@ -134,8 +134,12 @@ int KMFolderMaildir::open(const char *)
 
     if (!mIndexStream)
       rc = createIndexFromContents();
-    else
-      readIndex();
+    else if (!readIndex()) {
+      // the index is corrupt (e.g. truncated by a crash): rebuild it
+      emit statusMsg(i18n("Folder `%1' changed; recreating index.")
+                     .arg(name()));
+      rc = createIndexFromContents();
+    }
   }
   else
   {

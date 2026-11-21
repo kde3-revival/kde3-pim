@@ -1108,29 +1108,55 @@ namespace {
 }
 
 //-----------------------------------------------------------------------------
-QString KMMsgBase::getStringPart(MsgPartType t) const
+// Point g_chunk at the index entry of this message: directly into the mmap'ed
+// index file when the entry lies within the mapping, otherwise read it from
+// the index stream (e.g. an entry appended after the file was mapped).
+// Returns 1 on success, 0 if there is nothing to read and -1 if the entry
+// cannot be read.
+int KMMsgBase::loadIndexChunk(bool &using_mmap) const
 {
-retry:
-  QString ret;
-
   g_chunk_offset = 0;
-  bool using_mmap = false;
-  bool swapByteOrder = storage()->indexSwapByteOrder();
-  if (storage()->indexStreamBasePtr()) {
+  using_mmap = false;
+  KMFolderIndex *idx = storage();
+  if (mIndexLength <= 0)
+    return 0; // no index entry
+  if (mIndexOffset <= 0)
+    return -1;
+  if (idx->indexStreamBasePtr()
+      && mIndexOffset + mIndexLength <= idx->mIndexStreamPtrLength) {
     if (g_chunk)
       free(g_chunk);
     using_mmap = true;
-    g_chunk = storage()->indexStreamBasePtr() + mIndexOffset;
+    g_chunk = idx->indexStreamBasePtr() + mIndexOffset;
     g_chunk_length = mIndexLength;
-  } else {
-    if(!storage()->mIndexStream)
-      return ret;
-    if (g_chunk_length < mIndexLength)
-      g_chunk = (uchar *)realloc(g_chunk, g_chunk_length = mIndexLength);
-    off_t first_off=ftell(storage()->mIndexStream);
-    fseek(storage()->mIndexStream, mIndexOffset, SEEK_SET);
-    fread( g_chunk, mIndexLength, 1, storage()->mIndexStream);
-    fseek(storage()->mIndexStream, first_off, SEEK_SET);
+    return 1;
+  }
+  if (!idx->mIndexStream)
+    return 0; // index not open
+  if (g_chunk_length < mIndexLength)
+    g_chunk = (uchar *)realloc(g_chunk, g_chunk_length = mIndexLength);
+  off_t first_off=ftell(idx->mIndexStream);
+  fseek(idx->mIndexStream, mIndexOffset, SEEK_SET);
+  bool ok = fread(g_chunk, mIndexLength, 1, idx->mIndexStream) == 1;
+  fseek(idx->mIndexStream, first_off, SEEK_SET);
+  if (!ok)
+    kdWarning(5006) << "Cannot read index entry at offset " << mIndexOffset
+                    << " of " << idx->indexLocation() << endl;
+  return ok ? 1 : -1;
+}
+
+//-----------------------------------------------------------------------------
+QString KMMsgBase::getStringPart(MsgPartType t) const
+{
+  QString ret;
+
+  bool using_mmap = false;
+  bool swapByteOrder = storage()->indexSwapByteOrder();
+  int loaded = loadIndexChunk(using_mmap);
+  if (loaded <= 0) {
+    if (loaded < 0)
+      storage()->scheduleRecreateIndex();
+    return ret;
   }
 
   MsgPartType type;
@@ -1147,12 +1173,10 @@ retry:
     type = (MsgPartType) tmp;
     if(g_chunk_offset + l > mIndexLength) {
 	kdDebug(5006) << "This should never happen.. " << __FILE__ << ":" << __LINE__ << endl;
-        if(using_mmap) {
-            g_chunk_length = 0;
-            g_chunk = 0;
-        }
-        storage()->recreateIndex();
-        goto retry;
+        // Recreating the index deletes this message info, so it must not
+        // happen while we are using it.
+        storage()->scheduleRecreateIndex();
+        break;
     }
     if(type == t) {
         // This works because the QString constructor does a memcpy.
@@ -1185,29 +1209,16 @@ retry:
 //-----------------------------------------------------------------------------
 off_t KMMsgBase::getLongPart(MsgPartType t) const
 {
-retry:
   off_t ret = 0;
 
-  g_chunk_offset = 0;
   bool using_mmap = false;
   int sizeOfLong = storage()->indexSizeOfLong();
   bool swapByteOrder = storage()->indexSwapByteOrder();
-  if (storage()->indexStreamBasePtr()) {
-    if (g_chunk)
-      free(g_chunk);
-    using_mmap = true;
-    g_chunk = storage()->indexStreamBasePtr() + mIndexOffset;
-    g_chunk_length = mIndexLength;
-  } else {
-    if (!storage()->mIndexStream)
-      return ret;
-    assert(mIndexLength >= 0);
-    if (g_chunk_length < mIndexLength)
-      g_chunk = (uchar *)realloc(g_chunk, g_chunk_length = mIndexLength);
-    off_t first_off=ftell(storage()->mIndexStream);
-    fseek(storage()->mIndexStream, mIndexOffset, SEEK_SET);
-    fread( g_chunk, mIndexLength, 1, storage()->mIndexStream);
-    fseek(storage()->mIndexStream, first_off, SEEK_SET);
+  int loaded = loadIndexChunk(using_mmap);
+  if (loaded <= 0) {
+    if (loaded < 0)
+      storage()->scheduleRecreateIndex();
+    return ret;
   }
 
   MsgPartType type;
@@ -1225,12 +1236,9 @@ retry:
 
     if (g_chunk_offset + l > mIndexLength) {
       kdDebug(5006) << "This should never happen.. " << __FILE__ << ":" << __LINE__ << endl;
-      if(using_mmap) {
-        g_chunk_length = 0;
-        g_chunk = 0;
-      }
-      storage()->recreateIndex();
-      goto retry;
+      // see getStringPart()
+      storage()->scheduleRecreateIndex();
+      break;
     }
     if(type == t) {
       assert(sizeOfLong == l);

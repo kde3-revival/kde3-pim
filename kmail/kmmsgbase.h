@@ -461,6 +461,8 @@ public:
     MsgSizeServerPart = 17,
     MsgUIDPart = 18
   };
+  /** load the index entry of this message for getLongPart()/getStringPart() */
+  int loadIndexChunk(bool &using_mmap) const;
   /** access to long msgparts */
   off_t getLongPart(MsgPartType) const;
   /** access to string msgparts */

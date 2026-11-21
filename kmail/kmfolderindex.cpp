@@ -67,7 +67,16 @@
       (((x) & 0x0000ff00) <<  8) | (((x) & 0x000000ff) << 24))
 #endif
 
+/* Swap bytes in 16 bit value.  */
+#ifdef bswap_16
+#define kmail_swap_16(x) bswap_16(x)
+#else
+#define kmail_swap_16(x) \
+     ((((x) >> 8) & 0xff) | (((x) & 0xff) << 8))
+#endif
+
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/file.h>
@@ -82,6 +91,7 @@ KMFolderIndex::KMFolderIndex(KMFolder* folder, const char* name)
     mIndexSizeOfLong = sizeof(long);
     mIndexId = 0;
     mHeaderOffset   = 0;
+    mRecreateIndexPending = false;
 }
 
 
@@ -210,6 +220,49 @@ int KMFolderIndex::writeIndex( bool createEmptyIndex )
 }
 
 
+/* Check that an index entry (as written by KMMsgBase::asIndexString()) is
+   a sequence of complete parts.  A zero filled or truncated entry, as left
+   behind by a crash or a power loss, fails this test. */
+static bool isValidIndexEntry(const uchar *buf, int len, bool swapByteOrder,
+                              int sizeOfLong)
+{
+  int pos = 0;
+  while (pos < len) {
+    Q_UINT32 type;
+    Q_UINT16 l;
+    if (pos + int(sizeof(type) + sizeof(l)) > len)
+      return false;
+    memcpy(&type, buf + pos, sizeof(type));
+    memcpy(&l, buf + pos + sizeof(type), sizeof(l));
+    if (swapByteOrder) {
+      type = kmail_swap_32(type);
+      l = kmail_swap_16(l);
+    }
+    pos += sizeof(type) + sizeof(l);
+    if (type == KMMsgBase::MsgNoPart || pos + l > len)
+      return false;
+    switch (type) {
+    case KMMsgBase::MsgOffsetPart:
+    case KMMsgBase::MsgLegacyStatusPart:
+    case KMMsgBase::MsgSizePart:
+    case KMMsgBase::MsgDatePart:
+    case KMMsgBase::MsgCryptoStatePart:
+    case KMMsgBase::MsgMDNSentPart:
+    case KMMsgBase::MsgStatusPart:
+    case KMMsgBase::MsgSizeServerPart:
+    case KMMsgBase::MsgUIDPart:
+      // getLongPart() can only read longs of the size given in the header
+      if (sizeOfLong && l != sizeOfLong)
+        return false;
+      break;
+    default:
+      break;
+    }
+    pos += l;
+  }
+  return true;
+}
+
 bool KMFolderIndex::readIndex()
 {
   Q_INT32 len;
@@ -229,20 +282,52 @@ bool KMFolderIndex::readIndex()
   mTotalMsgs = 0;
   mHeaderOffset = ftell(mIndexStream);
 
+  struct stat stat_buf;
+  if (fstat(fileno(mIndexStream), &stat_buf) == -1)
+    return false;
+  const off_t fileSize = stat_buf.st_size;
+  // Only the 1506 header records the size of the longs in the entries.
+  const int sizeOfLong = (version >= 1506) ? mIndexSizeOfLong : 0;
+  QByteArray entry;
+
   clearIndex();
   while (!feof(mIndexStream))
   {
     mi = 0;
     if(version >= 1505) {
-      if(!fread(&len, sizeof(len), 1, mIndexStream))
+      off_t lenOffs = ftell(mIndexStream);
+      if (lenOffs == fileSize)
         break;
+      // Every entry must be complete and lie within the file, otherwise
+      // the index is corrupt and has to be recreated by the caller.
+      if(!fread(&len, sizeof(len), 1, mIndexStream)) {
+        kdWarning(5006) << "Index file " << indexLocation()
+                        << ": truncated entry at offset " << lenOffs << endl;
+        clearIndex();
+        return false;
+      }
 
       if (mIndexSwapByteOrder)
         len = kmail_swap_32(len);
 
       off_t offs = ftell(mIndexStream);
-      if(fseek(mIndexStream, len, SEEK_CUR))
-        break;
+      // KMMsgBase stores the length of the entry as a short
+      if (len <= 0 || len > 0x7fff || offs + len > fileSize) {
+        kdWarning(5006) << "Index file " << indexLocation()
+                        << ": invalid entry length " << len << " at offset "
+                        << lenOffs << " (file size " << fileSize << ")" << endl;
+        clearIndex();
+        return false;
+      }
+      entry.resize(len);
+      if (!fread(entry.data(), len, 1, mIndexStream)
+          || !isValidIndexEntry((const uchar *)entry.data(), len,
+                                mIndexSwapByteOrder, sizeOfLong)) {
+        kdWarning(5006) << "Index file " << indexLocation()
+                        << ": invalid entry at offset " << lenOffs << endl;
+        clearIndex();
+        return false;
+      }
       mi = new KMMsgInfo(folder(), offs, len);
     }
     else
@@ -486,13 +571,27 @@ KMMsgInfo* KMFolderIndex::setIndexEntry( int idx, KMMessage *msg )
 
 void KMFolderIndex::recreateIndex()
 {
-  kapp->setOverrideCursor(KCursor::arrowCursor());
-  KMessageBox::error(0,
-       i18n("The mail index for '%1' is corrupted and will be regenerated now, "
-            "but some information, including status flags, will be lost.").arg(name()));
-  kapp->restoreOverrideCursor();
+  kdWarning(5006) << "The mail index for " << indexLocation()
+                  << " is corrupted, recreating it" << endl;
+  emit statusMsg(i18n("Folder `%1' changed; recreating index.").arg(name()));
   createIndexFromContents();
   readIndex();
+}
+
+void KMFolderIndex::scheduleRecreateIndex()
+{
+  if (mRecreateIndexPending)
+    return;
+  mRecreateIndexPending = true;
+  QTimer::singleShot(0, this, SLOT(slotRecreateIndex()));
+}
+
+void KMFolderIndex::slotRecreateIndex()
+{
+  mRecreateIndexPending = false;
+  // the folder may have been closed (and its message list dropped) meanwhile
+  if (mOpenCount > 0 && mIndexStream)
+    recreateIndex();
 }
 
 
