@@ -19,6 +19,7 @@
 #include "kmfolderindex.h"
 #include "kmfolder.h"
 #include <config.h>
+#include <qmemarray.h>
 #include <qfileinfo.h>
 #include <qtimer.h>
 #include <kdebug.h>
@@ -274,7 +275,14 @@ int KMFolderIndex::writeIndex( bool createEmptyIndex )
 
   off_t nho = ftell(tmpIndexStream);
 
+  // The positions of the entries in the new file; they are only applied
+  // to the messages once the new file has replaced the old one, as they
+  // keep using the old one until then.
+  QMemArray<off_t> newOffsets;
+  QMemArray<int> newLengths;
   if ( !createEmptyIndex ) {
+    newOffsets.resize(mMsgList.high());
+    newLengths.resize(mMsgList.high());
     KMMsgBase* msgBase;
     for (unsigned int i=0; i<mMsgList.high(); i++)
     {
@@ -282,9 +290,8 @@ int KMFolderIndex::writeIndex( bool createEmptyIndex )
       buffer = msgBase->asIndexString(len);
       fwrite(&len,sizeof(len), 1, tmpIndexStream);
 
-      off_t tmp = ftell(tmpIndexStream);
-      msgBase->setIndexOffset(tmp);
-      msgBase->setIndexLength(len);
+      newOffsets[i] = ftell(tmpIndexStream);
+      newLengths[i] = len;
       if(fwrite(buffer, len, 1, tmpIndexStream) != 1)
 	kdDebug(5006) << "Whoa! " << __FILE__ << ":" << __LINE__ << endl;
     }
@@ -293,16 +300,21 @@ int KMFolderIndex::writeIndex( bool createEmptyIndex )
   int fError = ferror( tmpIndexStream );
   if( fError != 0 ) {
     fclose( tmpIndexStream );
+    unlink(QFile::encodeName(tempName));
     return fError;
   }
   if(    ( fflush( tmpIndexStream ) != 0 )
       || ( fsync( fileno( tmpIndexStream ) ) != 0 ) ) {
     int errNo = errno;
     fclose( tmpIndexStream );
+    unlink(QFile::encodeName(tempName));
     return errNo;
   }
-  if( fclose( tmpIndexStream ) != 0 )
-    return errno;
+  if( fclose( tmpIndexStream ) != 0 ) {
+    int errNo = errno;
+    unlink(QFile::encodeName(tempName));
+    return errNo;
+  }
 
   if ( ::rename(QFile::encodeName(tempName), QFile::encodeName(indexName)) != 0 ) {
     int errNo = errno;
@@ -314,6 +326,11 @@ int KMFolderIndex::writeIndex( bool createEmptyIndex )
   // Make the rename itself durable, otherwise after a power loss the
   // directory may still hold the old index (or none at all).
   syncDirectory( indexName );
+  for (unsigned int i=0; i<newOffsets.size(); i++)
+    if (mMsgList.at(i)) {
+      mMsgList.at(i)->setIndexOffset(newOffsets[i]);
+      mMsgList.at(i)->setIndexLength(newLengths[i]);
+    }
   mHeaderOffset = nho;
   mIndexStateOffset = nso;
   mIndexMarkedDirty = false;
