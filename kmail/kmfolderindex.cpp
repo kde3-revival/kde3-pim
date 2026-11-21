@@ -137,16 +137,25 @@ int KMFolderIndex::updateIndex()
   bool dirty = mDirty;
   mDirtyTimer->stop();
   mIndexSyncTimer->stop();
-  // the entries are rewritten in place below
+  // The entries are rewritten in place below.  KMMsgInfo::dirty() is also
+  // true for every entry whose fields are merely cached in memory; those
+  // are rewritten with the bytes already on disk, so only real changes
+  // (KMMsgBase::dirty()) make the index inconsistent meanwhile.  Do not
+  // re-arm the sync timer from here, or an open folder would be synced
+  // over and over.
   for (unsigned int i=0; !dirty && i<mMsgList.high(); i++)
-    if (mMsgList.at(i) && mMsgList.at(i)->dirty()) {
-      markIndexDirty();
+    if (mMsgList.at(i) && mMsgList.at(i)->KMMsgBase::dirty()) {
+      markIndexDirty(false);
       break;
     }
   for (unsigned int i=0; !dirty && i<mMsgList.high(); i++)
     if (mMsgList.at(i))
       dirty = !mMsgList.at(i)->syncIndexString();
   if (!dirty) { // Update successful
+      // the changes are in the index now
+      for (unsigned int i=0; i<mMsgList.high(); i++)
+        if (mMsgList.at(i))
+          mMsgList.at(i)->setDirty(false);
       if (!markIndexClean())
         return writeIndex();
       touchFolderIdsFile();
@@ -166,7 +175,7 @@ static bool writeIndexState(FILE *stream, off_t offset, Q_UINT32 state,
       && fsync(fileno(stream)) == 0;
 }
 
-void KMFolderIndex::markIndexDirty()
+void KMFolderIndex::markIndexDirty(bool scheduleSync)
 {
   if (mIndexMarkedDirty || !mAutoCreateIndex || !mIndexStream
       || !mIndexStateOffset)
@@ -180,7 +189,7 @@ void KMFolderIndex::markIndexDirty()
   mIndexMarkedDirty = true;
   // sync and mark clean again soon, so that a crash in the meantime only
   // costs the changes made since
-  if (!mIndexSyncTimer->isActive())
+  if (scheduleSync && !mIndexSyncTimer->isActive())
     mIndexSyncTimer->start(INDEX_SYNC_DELAY * 1000, true);
 }
 
@@ -327,6 +336,10 @@ int KMFolderIndex::writeIndex( bool createEmptyIndex )
 
   writeFolderIdsFile();
 
+  // the index holds every change now
+  for (unsigned int i=0; i<mMsgList.high(); i++)
+    if (mMsgList.at(i))
+      mMsgList.at(i)->setDirty(false);
   setDirty( false );
   return 0;
 }

@@ -96,8 +96,9 @@ public:
       file does not reflect yet.  The flag is cleared by updateIndex() and
       writeIndex() once the index on disk is complete and synced; an index
       that is still marked dirty when the folder is opened (KMail crashed or
-      the power failed) is not trusted. */
-  void markIndexDirty();
+      the power failed) is not trusted.  Unless @p scheduleSync is false,
+      updateIndex() is called a few seconds later to clean it again. */
+  void markIndexDirty(bool scheduleSync = true);
 
 public slots:
   /** Incrementally update the index if possible else call writeIndex */
