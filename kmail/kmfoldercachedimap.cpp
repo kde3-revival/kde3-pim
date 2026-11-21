@@ -1394,6 +1394,11 @@ void KMFolderCachedImap::uploadFlags()
     // FIXME END DUPLICATED FROM KMFOLDERIMAP
 
     if ( mStatusFlagsJobs ) {
+      // A sync aborted during an earlier upload (killed jobs report
+      // nothing) left the connection in place: make it only once, or every
+      // job would count twice.
+      disconnect( mAccount, SIGNAL( imapStatusChanged(KMFolder*, const QString&, bool) ),
+                  this, SLOT( slotImapStatusChanged(KMFolder*, const QString&, bool) ) );
       connect( mAccount, SIGNAL( imapStatusChanged(KMFolder*, const QString&, bool) ),
                this, SLOT( slotImapStatusChanged(KMFolder*, const QString&, bool) ) );
       return;
@@ -1439,6 +1444,11 @@ void KMFolderCachedImap::uploadSeenFlags()
     }
 
     if ( mStatusFlagsJobs ) {
+      // A sync aborted during an earlier upload (killed jobs report
+      // nothing) left the connection in place: make it only once, or every
+      // job would count twice.
+      disconnect( mAccount, SIGNAL( imapStatusChanged(KMFolder*, const QString&, bool) ),
+                  this, SLOT( slotImapStatusChanged(KMFolder*, const QString&, bool) ) );
       connect( mAccount, SIGNAL( imapStatusChanged(KMFolder*, const QString&, bool) ),
                this, SLOT( slotImapStatusChanged(KMFolder*, const QString&, bool) ) );
       return;
