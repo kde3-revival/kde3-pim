@@ -166,6 +166,8 @@ void MboxCompactionJob::done( int rc )
   if (!rc) {
     bool autoCreate = mbox->autoCreateIndex();
     QString box( realLocation() );
+    // the offsets in the index are wrong until it is rewritten
+    mbox->markIndexDirty();
     ::rename(QFile::encodeName(mTempName), QFile::encodeName(box));
     mbox->writeIndex();
     mbox->writeConfig();

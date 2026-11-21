@@ -33,6 +33,18 @@
 // Current version of the table of contents (index) files
 #define INDEX_VERSION 1506
 
+// The header of a version 1506 index is length-prefixed, so fields can be
+// appended without affecting older readers, which skip what they do not
+// know.  The third field is the state of the index: whether it has been
+// completely written and synced (clean) or may be inconsistent (anything
+// else, see KMFolderIndex::markIndexDirty()).
+#define INDEX_STATE_CLEAN 0x4b4d4943 // "KMIC"
+#define INDEX_STATE_DIRTY 0x4b4d4944 // "KMID"
+
+// Seconds after the first change before the index is synced and marked
+// clean again.
+#define INDEX_SYNC_DELAY 10
+
 #ifndef MAX_LINE
 #define MAX_LINE 4096
 #endif
@@ -92,6 +104,10 @@ KMFolderIndex::KMFolderIndex(KMFolder* folder, const char* name)
     mIndexId = 0;
     mHeaderOffset   = 0;
     mRecreateIndexPending = false;
+    mIndexStateOffset = 0;
+    mIndexMarkedDirty = false;
+    mIndexSyncTimer = new QTimer(this, "mIndexSyncTimer");
+    connect(mIndexSyncTimer, SIGNAL(timeout()), SLOT(slotSyncIndex()));
 }
 
 
@@ -120,14 +136,77 @@ int KMFolderIndex::updateIndex()
     return 0;
   bool dirty = mDirty;
   mDirtyTimer->stop();
+  mIndexSyncTimer->stop();
+  // the entries are rewritten in place below
+  for (unsigned int i=0; !dirty && i<mMsgList.high(); i++)
+    if (mMsgList.at(i) && mMsgList.at(i)->dirty()) {
+      markIndexDirty();
+      break;
+    }
   for (unsigned int i=0; !dirty && i<mMsgList.high(); i++)
     if (mMsgList.at(i))
       dirty = !mMsgList.at(i)->syncIndexString();
   if (!dirty) { // Update successful
+      if (!markIndexClean())
+        return writeIndex();
       touchFolderIdsFile();
       return 0;
   }
   return writeIndex();
+}
+
+static bool writeIndexState(FILE *stream, off_t offset, Q_UINT32 state,
+                            bool swapByteOrder)
+{
+  if (swapByteOrder)
+    state = kmail_swap_32(state);
+  return fseek(stream, offset, SEEK_SET) == 0
+      && fwrite(&state, sizeof(state), 1, stream) == 1
+      && fflush(stream) == 0
+      && fsync(fileno(stream)) == 0;
+}
+
+void KMFolderIndex::markIndexDirty()
+{
+  if (mIndexMarkedDirty || !mAutoCreateIndex || !mIndexStream
+      || !mIndexStateOffset)
+    return;
+  if (!writeIndexState(mIndexStream, mIndexStateOffset, INDEX_STATE_DIRTY,
+                       mIndexSwapByteOrder)) {
+    kdWarning(5006) << "Cannot mark " << indexLocation() << " dirty: "
+                    << strerror(errno) << endl;
+    return;
+  }
+  mIndexMarkedDirty = true;
+  // sync and mark clean again soon, so that a crash in the meantime only
+  // costs the changes made since
+  if (!mIndexSyncTimer->isActive())
+    mIndexSyncTimer->start(INDEX_SYNC_DELAY * 1000, true);
+}
+
+bool KMFolderIndex::markIndexClean()
+{
+  if (!mIndexMarkedDirty)
+    return true;
+  if (!mIndexStream || !mIndexStateOffset)
+    return false;
+  // everything written so far must be on disk before the index claims to
+  // be clean
+  if (fflush(mIndexStream) != 0 || fsync(fileno(mIndexStream)) != 0
+      || !writeIndexState(mIndexStream, mIndexStateOffset, INDEX_STATE_CLEAN,
+                          mIndexSwapByteOrder)) {
+    kdWarning(5006) << "Cannot mark " << indexLocation() << " clean: "
+                    << strerror(errno) << endl;
+    return false;
+  }
+  mIndexMarkedDirty = false;
+  return true;
+}
+
+void KMFolderIndex::slotSyncIndex()
+{
+  if (mOpenCount > 0 && mIndexStream)
+    updateIndex();
 }
 
 /* fsync() the directory that contains fileName. */
@@ -168,8 +247,9 @@ int KMFolderIndex::writeIndex( bool createEmptyIndex )
   // Header
   Q_UINT32 byteOrder = 0x12345678;
   Q_UINT32 sizeOfLong = sizeof(long);
+  Q_UINT32 indexState = INDEX_STATE_CLEAN;
 
-  Q_UINT32 header_length = sizeof(byteOrder)+sizeof(sizeOfLong);
+  Q_UINT32 header_length = sizeof(byteOrder)+sizeof(sizeOfLong)+sizeof(indexState);
   char pad_char = '\0';
   fwrite(&pad_char, sizeof(pad_char), 1, tmpIndexStream);
   fwrite(&header_length, sizeof(header_length), 1, tmpIndexStream);
@@ -177,6 +257,8 @@ int KMFolderIndex::writeIndex( bool createEmptyIndex )
   // Write header
   fwrite(&byteOrder, sizeof(byteOrder), 1, tmpIndexStream);
   fwrite(&sizeOfLong, sizeof(sizeOfLong), 1, tmpIndexStream);
+  off_t nso = ftell(tmpIndexStream);
+  fwrite(&indexState, sizeof(indexState), 1, tmpIndexStream);
 
   off_t nho = ftell(tmpIndexStream);
 
@@ -221,6 +303,8 @@ int KMFolderIndex::writeIndex( bool createEmptyIndex )
   // directory may still hold the old index (or none at all).
   syncDirectory( indexName );
   mHeaderOffset = nho;
+  mIndexStateOffset = nso;
+  mIndexMarkedDirty = false;
   if (mIndexStream)
       fclose(mIndexStream);
   mIndexStream = 0;
@@ -302,6 +386,12 @@ bool KMFolderIndex::readIndex()
   setDirty( false );
 
   if (!readIndexHeader(&version)) return false;
+
+  if (mIndexMarkedDirty) {
+    kdWarning(5006) << "Index file " << indexLocation()
+                    << " was not closed cleanly" << endl;
+    return false;
+  }
 
   mUnreadMsgs = 0;
   mTotalMsgs = 0;
@@ -400,6 +490,12 @@ bool KMFolderIndex::readIndex()
     setDirty( true );
     writeIndex();
   }
+  else if ( !mIndexStateOffset && mAutoCreateIndex )
+  {
+    // written by an older KMail, without the clean/dirty state: rewrite it
+    // now so that later changes are protected by the state
+    writeIndex();
+  }
   mTotalMsgs = mMsgList.count();
   return true;
 }
@@ -420,6 +516,8 @@ bool KMFolderIndex::readIndexHeader(int *gv)
   assert(mIndexStream != 0);
   mIndexSwapByteOrder = false;
   mIndexSizeOfLong = sizeof(long);
+  mIndexStateOffset = 0;
+  mIndexMarkedDirty = false;
 
   int ret = fscanf(mIndexStream, "# KMail-Index V%d\n", &indexVersion);
   if ( ret == EOF || ret == 0 )
@@ -479,6 +577,18 @@ bool KMFolderIndex::readIndexHeader(int *gv)
             mIndexSizeOfLong = sizeOfLong;
             header_length -= sizeof(sizeOfLong);
             needs_update = false;
+
+            Q_UINT32 indexState;
+            if (header_length >= sizeof(indexState))
+            {
+               mIndexStateOffset = ftell(mIndexStream);
+               if (!fread(&indexState, sizeof(indexState), 1, mIndexStream))
+                  indexState = 0;
+               if (mIndexSwapByteOrder)
+                  indexState = kmail_swap_32(indexState);
+               mIndexMarkedDirty = (indexState != INDEX_STATE_CLEAN);
+               header_length -= sizeof(indexState);
+            }
          }
       }
       if (needs_update || mIndexSwapByteOrder || (mIndexSizeOfLong != sizeof(long)))

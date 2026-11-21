@@ -997,6 +997,9 @@ if( fileD1.open( IO_WriteOnly ) ) {
     return 0;
   }
 
+  // the index does not cover the message until its entry is appended
+  markIndexDirty();
+
   // Make sure the file is large enough to check for an end
   // character
   fseek(mStream, 0, SEEK_END);

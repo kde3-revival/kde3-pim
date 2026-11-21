@@ -23,6 +23,8 @@
 #include "folderstorage.h"
 #include "kmmsglist.h"
 
+class QTimer;
+
 /**
  * @short A FolderStorage with an index for faster access to often used
  * message properties..
@@ -88,12 +90,22 @@ public:
       infos that are in use. */
   void scheduleRecreateIndex();
 
+  /** Record in the index file that it is about to become inconsistent with
+      the folder: called before an index entry is appended or rewritten in
+      place and before the folder contents change in a way that the index
+      file does not reflect yet.  The flag is cleared by updateIndex() and
+      writeIndex() once the index on disk is complete and synced; an index
+      that is still marked dirty when the folder is opened (KMail crashed or
+      the power failed) is not trusted. */
+  void markIndexDirty();
+
 public slots:
   /** Incrementally update the index if possible else call writeIndex */
   virtual int updateIndex();
 
 private slots:
   void slotRecreateIndex();
+  void slotSyncIndex();
 
 protected:
   bool readIndex();
@@ -107,6 +119,10 @@ protected:
   virtual int createIndexFromContents() = 0;
 
   bool updateIndexStreamPtr(bool just_close=FALSE);
+
+  /** Clear the dirty mark set by markIndexDirty() after syncing the index
+      file.  Returns false if that failed. */
+  bool markIndexClean();
 
   /** Tests whether the contents of this folder is newer than the index.
       Should return IndexTooOld if the index is older than the contents.
@@ -133,6 +149,12 @@ protected:
   uchar *mIndexStreamPtr;
   int mIndexStreamPtrLength, mIndexId;
   bool mRecreateIndexPending;
+  /** offset of the clean/dirty state in the index header, 0 if the index
+      has no such field (written by an older KMail) */
+  off_t mIndexStateOffset;
+  /** the index file is marked dirty on disk */
+  bool mIndexMarkedDirty;
+  QTimer *mIndexSyncTimer;
   bool mIndexSwapByteOrder; // Index file was written with swapped byte order
   int mIndexSizeOfLong; // Index file was written with longs of this size
 };

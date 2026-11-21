@@ -927,6 +927,7 @@ void KMFolderMaildir::removeMsg(int idx, bool)
   KMMsgBase* msg = mMsgList[idx];
   if (!msg || !msg->fileName()) return;
 
+  markIndexDirty(); // the index still lists the file until it is rewritten
   removeFile(msg->fileName());
 
   KMFolderIndex::removeMsg(idx);
@@ -935,6 +936,7 @@ void KMFolderMaildir::removeMsg(int idx, bool)
 //-----------------------------------------------------------------------------
 KMMessage* KMFolderMaildir::take(int idx)
 {
+  markIndexDirty(); // the index still lists the file until it is rewritten
   // first, we do the high-level stuff.. then delete later
   KMMessage *msg = KMFolderIndex::take(idx);
 
@@ -1074,6 +1076,8 @@ QString KMFolderMaildir::moveInternal(const QString& oldLoc, const QString& newL
 //-----------------------------------------------------------------------------
 QString KMFolderMaildir::moveInternal(const QString& oldLoc, const QString& newLoc, QString& aFileName, KMMsgStatus status)
 {
+  // the index does not know the new file name yet
+  markIndexDirty();
   QString dest(newLoc);
   // make sure that our destination filename doesn't already exist
   while (QFile::exists(dest))
