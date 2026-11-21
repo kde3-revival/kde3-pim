@@ -419,7 +419,8 @@ void HeaderItem::paintCell( QPainter * p, const QColorGroup & cg,
 QString HeaderItem::generate_key( KMHeaders *headers,
     KMMsgBase *msg,
     const KPaintInfo *paintInfo,
-    int sortOrder )
+    int sortOrder,
+    int idx )
 {
   // It appears, that QListView in Qt-3.0 asks for the key
   // in QListView::clear(), which is called from
@@ -428,7 +429,7 @@ QString HeaderItem::generate_key( KMHeaders *headers,
 
   int column = sortOrder & ((1 << 5) - 1);
   QString ret = QChar( (char)sortOrder );
-  QString sortArrival = QString( "%1" ).arg( msg->getMsgSerNum(), 0, 36 );
+  QString sortArrival = QString( "%1" ).arg( msg->getMsgSerNum( idx ), 0, 36 );
   while (sortArrival.length() < 7) sortArrival = '0' + sortArrival;
 
   if (column == paintInfo->dateCol) {
@@ -543,7 +544,7 @@ QString HeaderItem::key( int column, bool /*ascending*/ ) const
     KMHeaders *headers = static_cast<KMHeaders*>(listView());
     KMMsgBase *msgBase = headers->folder()->getMsgBase( mMsgId );
     return ((HeaderItem *)this)->mKey =
-      generate_key( headers, msgBase, headers->paintInfo(), sortOrder );
+      generate_key( headers, msgBase, headers->paintInfo(), sortOrder, mMsgId );
   }
   return mKey;
 }

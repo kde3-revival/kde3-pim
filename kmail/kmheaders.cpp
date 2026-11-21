@@ -3197,7 +3197,7 @@ bool KMHeaders::readSortOrder( bool set_selection, bool forceJumpToUnread )
                 if (mPaintInfo.status)
                     sortOrder |= (1 << 5);
                 sortCache[x] = new SortCacheItem(
-                    x, HeaderItem::generate_key( this, msg, &mPaintInfo, sortOrder ));
+                    x, HeaderItem::generate_key( this, msg, &mPaintInfo, sortOrder, x ));
                 if(threaded)
                     unparented.append(sortCache[x]);
                 else

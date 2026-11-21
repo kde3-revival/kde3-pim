@@ -203,7 +203,9 @@ public:
   void paintCell( QPainter * p, const QColorGroup & cg,
                                 int column, int width, int align );
 
-  static QString generate_key( KMHeaders *headers, KMMsgBase *msg, const KPaintInfo *paintInfo, int sortOrder );
+  /** @p idx is the index of @p msg in its folder, if known (saves a linear
+      search of the folder for its serial number). */
+  static QString generate_key( KMHeaders *headers, KMMsgBase *msg, const KPaintInfo *paintInfo, int sortOrder, int idx = -1 );
 
   virtual QString key( int column, bool /*ascending*/ ) const;
 
