@@ -203,6 +203,8 @@ private:
   /** The broken connection has been reported to the application; cleared
       when makeLogin() connects again. */
   bool mConnectionErrorReported;
+  /** closeConnection() is logging out: a broken connection is no error. */
+  bool mLoggingOut;
   int readSize;
   QDateTime mTimeOfLastNoop;
 };

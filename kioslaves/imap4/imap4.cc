@@ -172,6 +172,7 @@ IMAP4Protocol::IMAP4Protocol (const QCString & pool, const QCString & app, bool 
   relayEnabled = false;
   readBufferLen = 0;
   mConnectionErrorReported = false;
+  mLoggingOut = false;
   cacheOutput = false;
   decodeContent = false;
   mTimeOfLastNoop = QDateTime();
@@ -761,15 +762,23 @@ bool IMAP4Protocol::parseReadLine (QByteArray & buffer, ulong relay)
         memmove(readBuffer, &readBuffer[copyLen], readBufferLen);
       if (buffer[buffer.size() - 1] == '\n') return TRUE;
     }
+    // An untagged BYE (imapParser::parseUntagged()) leaves ISTATE_NO with
+    // the socket open: the server is closing the connection.  A tagged
+    // reply it sends along, e.g. to LOGOUT, comes right after the BYE;
+    // do not wait the full response timeout for a server that does not
+    // close its end.
+    const bool byeReceived = getState() == ISTATE_NO;
     if (!isConnectionValid())
     {
       kdDebug(7116) << "parseReadLine - connection broken" << endl;
       connectionLost (ERR_CONNECTION_BROKEN);
       return FALSE;
     }
-    if (!waitForResponse( responseTimeout() ))
+    if (!waitForResponse( byeReceived ? 2 : responseTimeout() ))
     {
-      connectionLost (ERR_SERVER_TIMEOUT);
+      if (byeReceived)
+        kdDebug(7116) << "parseReadLine - BYE received, closing the connection" << endl;
+      connectionLost (byeReceived ? ERR_CONNECTION_BROKEN : ERR_SERVER_TIMEOUT);
       return FALSE;
     }
     // KSSL::read() can fail without setting errno: clear it, or an EINTR
@@ -798,10 +807,12 @@ bool IMAP4Protocol::parseReadLine (QByteArray & buffer, ulong relay)
 void
 IMAP4Protocol::connectionLost (int errorCode)
 {
-  // exactly one error per broken connection, whoever notices it
+  // exactly one error per broken connection, whoever notices it; none
+  // while closeConnection() logs out, there is no job to report it to
   if (!mConnectionErrorReported)
   {
-    error (errorCode, myHost);
+    if (!mLoggingOut)
+      error (errorCode, myHost);
     mConnectionErrorReported = true;
   }
   // also after a "* BYE", which left ISTATE_NO with the socket open
@@ -2066,7 +2077,9 @@ void IMAP4Protocol::closeConnection()
   }
   if (getState() != ISTATE_CONNECT)
   {
+    mLoggingOut = true;
     imapCommand *cmd = doCommand (imapCommand::clientLogout());
+    mLoggingOut = false;
     completeQueue.removeRef (cmd);
   }
   closeDescriptor();
@@ -2084,6 +2097,13 @@ bool IMAP4Protocol::makeLogin ()
     return true;
 
   kdDebug(7116) << "IMAP4::makeLogin - checking login" << endl;
+  if (getState() == ISTATE_NO && m_iSock != -1)
+  {
+    // the server said BYE and the command it interrupted completed: drop
+    // what is left of that connection before making a new one
+    closeDescriptor();
+    readBufferLen = 0;
+  }
   bool alreadyConnected = getState() == ISTATE_CONNECT;
   kdDebug(7116) << "IMAP4::makeLogin - alreadyConnected " << alreadyConnected << endl;
   if (alreadyConnected || connectToHost (myHost.latin1(), myPort))
@@ -2746,6 +2766,13 @@ IMAP4Protocol::assureBox (const QString & aBox, bool readonly)
     QString cmdInfo = cmd->resultInfo();
     completeQueue.removeRef (cmd);
 
+    if (!ok && getState() == ISTATE_NO)
+    {
+      // the connection broke, or the server said BYE: report that, not
+      // the folder
+      connectionLost (ERR_CONNECTION_BROKEN);
+      return false;
+    }
     if (!ok)
     {
       bool found = false;
