@@ -2411,6 +2411,10 @@ void KMFolderImap::saveMsgMetaData( KMMessage* msg, ulong uid )
     uid = msg->UID();
   }
   ulong serNum = msg->getMsgSerNum();
+  // QIntDict does not grow by itself, and with its 17 buckets a lookup in the
+  // map of a big folder walks thousands of entries
+  if ( mUidMetaDataMap.count() >= mUidMetaDataMap.size() )
+    mUidMetaDataMap.resize( 2 * mUidMetaDataMap.size() + 1 );
   mUidMetaDataMap.replace( uid, new KMMsgMetaData(msg->status(), serNum) );
 }
 
