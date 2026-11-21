@@ -722,6 +722,10 @@ bool IMAP4Protocol::parseRead(QByteArray & buffer, ulong len, ulong relay)
 bool IMAP4Protocol::parseReadLine (QByteArray & buffer, ulong relay)
 {
   if (myHost.isEmpty()) return FALSE;
+  // The connection broke (and the error went out) while parsing the
+  // current response, e.g. in parseRead() in the middle of a literal:
+  // report it only once.
+  if (getState() == ISTATE_NO && readBufferLen <= 0) return FALSE;
 
   while (true) {
     ssize_t copyLen = 0;
