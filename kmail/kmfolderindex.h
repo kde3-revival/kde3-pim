@@ -152,6 +152,9 @@ protected:
   /** Clear the dirty mark set by markIndexDirty() after syncing the index
       file.  Returns false if that failed. */
   bool markIndexClean();
+  /** Keep the .ids file from looking older than the index after the
+      clean/dirty state has been written. */
+  void touchIdsAfterStateWrite();
 
   /** Tests whether the contents of this folder is newer than the index.
       Should return IndexTooOld if the index is older than the contents.

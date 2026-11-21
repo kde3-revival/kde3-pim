@@ -189,6 +189,7 @@ void KMFolderIndex::markIndexDirty(bool scheduleSync)
     return;
   }
   mIndexMarkedDirty = true;
+  touchIdsAfterStateWrite();
   // sync and mark clean again soon, so that a crash in the meantime only
   // costs the changes made since
   if (scheduleSync && !mIndexSyncTimer->isActive())
@@ -211,7 +212,18 @@ bool KMFolderIndex::markIndexClean()
     return false;
   }
   mIndexMarkedDirty = false;
+  touchIdsAfterStateWrite();
   return true;
+}
+
+void KMFolderIndex::touchIdsAfterStateWrite()
+{
+  // Writing the state made the index newer than the .ids file, which
+  // KMMsgDict::isFolderIdsOutdated() would then reject at the next start,
+  // renumbering the folder.  The state write moves no entry, so the
+  // serial numbers in the .ids file are still right.
+  if (mExportsSernums)
+    utime(QFile::encodeName(KMMsgDict::getFolderIdsLocation(*this)), 0);
 }
 
 void KMFolderIndex::slotSyncIndex()

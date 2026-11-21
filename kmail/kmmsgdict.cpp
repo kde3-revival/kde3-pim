@@ -15,6 +15,7 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#include <utime.h>
 
 #include <string.h>
 #include <errno.h>
@@ -581,6 +582,9 @@ int KMMsgDict::touchFolderIds( const FolderStorage &storage )
     rentry->sync();
     fclose(rentry->fp);
     rentry->fp = 0;
+    // Opening and flushing the file does not change its mtime, but the
+    // .ids file is only trusted if it is not older than the index.
+    utime(QFile::encodeName(getFolderIdsLocation(storage)), 0);
   }
   return 0;
 }
