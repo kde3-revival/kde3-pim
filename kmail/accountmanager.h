@@ -113,6 +113,7 @@ public slots:
 
 private slots:
   void checkMailAfterResume();
+  void sleepFailsafe();
 
 
 signals:
@@ -154,6 +155,8 @@ private:
   bool mResumeCheckPending;
   int mResumeCheckRetries;
   QTimer mResumeTimer;
+  // ends the sleeping state if PrepareForSleep(false) does not come
+  QTimer mSleepFailsafeTimer;
 };
 
 } // namespace KMail

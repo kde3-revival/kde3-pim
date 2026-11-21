@@ -195,6 +195,12 @@ void KMail::releaseLogindSleepDelay()
   }
 }
 
+void KMail::takeLogindSleepDelay()
+{
+  if ( s )
+    takeDelayLock();
+}
+
 void KMail::unwatchLogindSleep()
 {
   if ( !s )
@@ -223,6 +229,10 @@ bool KMail::watchLogindSleep( LogindSleepListener * )
 }
 
 void KMail::releaseLogindSleepDelay()
+{
+}
+
+void KMail::takeLogindSleepDelay()
 {
 }
 

@@ -44,6 +44,10 @@ bool watchLogindSleep( LogindSleepListener *listener );
     machine is awake again). */
 void releaseLogindSleepDelay();
 
+/** Takes the delay lock again, as after PrepareForSleep(false), when the
+    wakeup went unnoticed. */
+void takeLogindSleepDelay();
+
 void unwatchLogindSleep();
 
 }

@@ -39,6 +39,7 @@ AccountManager::AccountManager()
   mAcctChecking.clear();
   mAcctTodo.clear();
   connect( &mResumeTimer, SIGNAL( timeout() ), SLOT( checkMailAfterResume() ) );
+  connect( &mSleepFailsafeTimer, SIGNAL( timeout() ), SLOT( sleepFailsafe() ) );
   watchLogindSleep( this );
 }
 
@@ -438,12 +439,19 @@ void AccountManager::prepareForSleep()
     }
   }
   releaseLogindSleepDelay();
+  // If logind restarts while the machine sleeps, PrepareForSleep(false)
+  // never comes and the accounts would refuse to connect until KMail is
+  // restarted.  Qt's timers run on the monotonic clock, which stops while
+  // the machine is suspended: this one fires a minute of awake time after
+  // the wakeup (or after the suspend did not happen).
+  mSleepFailsafeTimer.start( 60 * 1000, true );
 }
 
 //-----------------------------------------------------------------------------
 void AccountManager::resumedFromSleep()
 {
   kdDebug(5006) << k_funcinfo << endl;
+  mSleepFailsafeTimer.stop();
   // let the IMAP accounts connect again, e.g. for a folder the user opens
   for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it )
     if ( ImapAccountBase *imap = dynamic_cast<ImapAccountBase*>( *it ) )
@@ -460,6 +468,16 @@ void AccountManager::resumedFromSleep()
   mResumeCheckPending = true;
   mResumeCheckRetries = 0;
   mResumeTimer.start( 10 * 1000, true );
+}
+
+//-----------------------------------------------------------------------------
+void AccountManager::sleepFailsafe()
+{
+  if ( !mSleeping )
+    return;
+  kdWarning(5006) << "logind: no wakeup signal a minute after the sleep, assuming the machine is awake" << endl;
+  takeLogindSleepDelay();
+  resumedFromSleep();
 }
 
 //-----------------------------------------------------------------------------
