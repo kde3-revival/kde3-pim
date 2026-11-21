@@ -98,7 +98,8 @@ void HeaderItem::irefresh()
   }
 
   KMMsgBase *mMsgBase = headers->folder()->getMsgBase( mMsgId );
-  mSerNum = mMsgBase->getMsgSerNum();
+  // the folder knows where the message is: don't make it search for it
+  mSerNum = mMsgBase->getMsgSerNum( mMsgId );
   if (mMsgBase->isNew() || mMsgBase->isUnread()
       || mMsgBase->isImportant() || mMsgBase->isTodo() || mMsgBase->isWatched() ) {
     setOpen(true);

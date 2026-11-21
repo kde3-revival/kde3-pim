@@ -1064,6 +1064,22 @@ unsigned long KMMsgBase::getMsgSerNum() const
   return msn;
 }
 
+//-----------------------------------------------------------------------------
+unsigned long KMMsgBase::getMsgSerNum( int idx ) const
+{
+  unsigned long msn = MessageProperty::serialCache( this );
+  if (msn)
+    return msn;
+  if (mParent) {
+    if ( idx < 0 || idx >= mParent->count() || mParent->getMsgBase( idx ) != this )
+      idx = mParent->find((KMMsgBase*)this);
+    msn = KMMsgDict::instance()->getMsgSerNum(mParent, idx);
+    if (msn)
+      MessageProperty::setSerialCache( this, msn );
+  }
+  return msn;
+}
+
 
 //-----------------------------------------------------------------------------
 KMMsgAttachmentState KMMsgBase::attachmentState() const

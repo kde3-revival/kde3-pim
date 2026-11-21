@@ -378,6 +378,12 @@ public:
   /** Returns the message serial number for the message. */
   virtual unsigned long getMsgSerNum() const;
 
+  /** Returns the message serial number for the message, which the caller
+      expects at index @p idx of its folder.  Unlike getMsgSerNum() this does
+      not search the folder for the message (linear in the folder size) when
+      it is at that index. */
+  unsigned long getMsgSerNum( int idx ) const;
+
   /** If undo for this message should be enabled */
   virtual bool enableUndo() { return mEnableUndo; }
   virtual void setEnableUndo( bool enable ) { mEnableUndo = enable; }
