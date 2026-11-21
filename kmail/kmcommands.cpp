@@ -312,12 +312,13 @@ void KMCommand::transferSelectedMsgs()
     else
     {
       KMFolder *folder = mb->parent();
+      if (!folder) continue;
       int idx = folder->find(mb);
       if (idx < 0) continue;
       thisMsg = folder->getMsg(idx);
     }
     if (!thisMsg) continue;
-    if ( thisMsg->transferInProgress() &&
+    if ( thisMsg->transferInProgress() && thisMsg->parent() &&
          thisMsg->parent()->folderType() == KMFolderTypeImap )
     {
       thisMsg->setTransferInProgress( false, true );
