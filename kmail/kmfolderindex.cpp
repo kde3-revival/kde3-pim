@@ -205,7 +205,10 @@ bool KMFolderIndex::markIndexClean()
 
 void KMFolderIndex::slotSyncIndex()
 {
-  if (mOpenCount > 0 && mIndexStream)
+  // If the message list changed (mDirty), only rewriting the whole index
+  // makes it clean; leave that to the dirty timer or the closing of the
+  // folder as before instead of rewriting big indexes every few seconds.
+  if (mOpenCount > 0 && mIndexStream && !mDirty)
     updateIndex();
 }
 
