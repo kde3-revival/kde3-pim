@@ -3258,6 +3258,28 @@ bool KMHeaders::readSortOrder( bool set_selection, bool forceJumpToUnread )
         END_TIMER(reparent);
         SHOW_TIMER(reparent);
     }
+    // HeaderItem::irefresh() opens the threads with unread messages.  Opening
+    // an item that has children makes QListView walk all the items, so with
+    // many such threads filling the list would be quadratic.  Find those
+    // threads now: their items are then opened as they are created, while
+    // they have no children yet.
+    if ( threaded && getNestingPolicy() == OpenUnread ) {
+        const int count = mFolder->count();
+        mOpenThreads.fill( 0, count );
+        for ( int x = 0; x < count; x++ ) {
+            SortCacheItem *sci = sortCache[x];
+            const KMMsgBase *msgBase = sci ? mFolder->getMsgBase( x ) : 0;
+            if ( !msgBase || !( msgBase->isNew() || msgBase->isUnread()
+                                || msgBase->isImportant() || msgBase->isTodo()
+                                || msgBase->isWatched() ) )
+                continue;
+            for ( int depth = 0; depth < count && sci->parent() && sci->parent() != mRoot; depth++ )
+                sci = sci->parent();
+            if ( sci->id() >= 0 && sci->id() < count )
+                mOpenThreads[sci->id()] = 1;
+        }
+    }
+
     //create headeritems
     CREATE_TIMER(header_creation);
     START_TIMER(header_creation);
@@ -3337,6 +3359,7 @@ bool KMHeaders::readSortOrder( bool set_selection, bool forceJumpToUnread )
         if (mSortCol == paintInfo()->dateCol)
           compare_toplevel = false;
     } while(!s.isEmpty());
+    mOpenThreads.resize( 0 );
 
     for(int x = 0; x < mFolder->count(); x++) {     //cleanup
         if (!sortCache[x]) { // not yet there?

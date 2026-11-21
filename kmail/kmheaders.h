@@ -405,6 +405,11 @@ private:
   QDict< QPtrList< SortCacheItem > > mSubjectLists;
   /** */
   QPtrList<HeaderItem> mImperfectlyThreadedList;
+  /** While readSortOrder() creates the items of a threaded list with the
+      OpenUnread policy: for each top level message, whether its thread is to
+      be opened (it has a new, unread, important, todo or watched message).
+      Empty otherwise.  See HeaderItem::irefresh(). */
+  QMemArray<char> mOpenThreads;
 
   /** Debugging helpers for outputting the threading data structures. */
   void printSubjectThreadingTree( );

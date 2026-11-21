@@ -100,6 +100,14 @@ void HeaderItem::irefresh()
   KMMsgBase *mMsgBase = headers->folder()->getMsgBase( mMsgId );
   // the folder knows where the message is: don't make it search for it
   mSerNum = mMsgBase->getMsgSerNum( mMsgId );
+  if ( !headers->mOpenThreads.isEmpty() ) {
+    // KMHeaders::readSortOrder() is filling the list and has found the threads
+    // to open: open their top items, the other items follow their parent
+    if ( !parent() && mMsgId < (int)headers->mOpenThreads.size()
+         && headers->mOpenThreads[mMsgId] )
+      setOpen(true);
+    return;
+  }
   if (mMsgBase->isNew() || mMsgBase->isUnread()
       || mMsgBase->isImportant() || mMsgBase->isTodo() || mMsgBase->isWatched() ) {
     setOpen(true);
