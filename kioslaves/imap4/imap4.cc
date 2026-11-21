@@ -772,6 +772,9 @@ bool IMAP4Protocol::parseReadLine (QByteArray & buffer, ulong relay)
       connectionLost (ERR_SERVER_TIMEOUT);
       return FALSE;
     }
+    // KSSL::read() can fail without setting errno: clear it, or an EINTR
+    // left over from an earlier call would retry a TLS error for ever.
+    errno = 0;
     readBufferLen = read(readBuffer, IMAP_BUFFER - 1);
     const int readError = errno;
     if (readBufferLen < 0 && readError == EINTR)
