@@ -448,7 +448,10 @@ int KMMsgDict::readFolderIds( FolderStorage& storage )
     if (swapByteOrder)
        msn = kmail_swap_32(msn);
 
-    if (!readOk || dict->find(msn)) {
+    // Serial numbers start at 1; a zero is a hole, like the ones the old
+    // appendToFolderIds() left on 64-bit systems.  Renumber the folder
+    // rather than give a message the serial number 0.
+    if (!readOk || !msn || dict->find(msn)) {
       for (unsigned int i = 0; i < index; i++) {
         msn = rentry->getMsn(i);
         dict->remove((long)msn);
