@@ -130,6 +130,17 @@ int KMFolderIndex::updateIndex()
   return writeIndex();
 }
 
+/* fsync() the directory that contains fileName. */
+static void syncDirectory( const QString &fileName )
+{
+  QCString dir = QFile::encodeName( QFileInfo( fileName ).dirPath( true ) );
+  int fd = ::open( dir, O_RDONLY | O_DIRECTORY );
+  if ( fd < 0 )
+    return;
+  fsync( fd );
+  ::close( fd );
+}
+
 int KMFolderIndex::writeIndex( bool createEmptyIndex )
 {
   QString tempName;
@@ -199,16 +210,30 @@ int KMFolderIndex::writeIndex( bool createEmptyIndex )
   if( fclose( tmpIndexStream ) != 0 )
     return errno;
 
-  ::rename(QFile::encodeName(tempName), QFile::encodeName(indexName));
+  if ( ::rename(QFile::encodeName(tempName), QFile::encodeName(indexName)) != 0 ) {
+    int errNo = errno;
+    kdWarning(5006) << "Cannot rename " << tempName << " to " << indexName
+                    << ": " << strerror(errNo) << endl;
+    unlink(QFile::encodeName(tempName));
+    return errNo;
+  }
+  // Make the rename itself durable, otherwise after a power loss the
+  // directory may still hold the old index (or none at all).
+  syncDirectory( indexName );
   mHeaderOffset = nho;
   if (mIndexStream)
       fclose(mIndexStream);
+  mIndexStream = 0;
 
   if ( createEmptyIndex )
     return 0;
 
   mIndexStream = fopen(QFile::encodeName(indexName), "r+"); // index file
-  assert( mIndexStream );
+  if ( !mIndexStream ) {
+    int errNo = errno;
+    updateIndexStreamPtr( true );
+    return errNo;
+  }
   fcntl(fileno(mIndexStream), F_SETFD, FD_CLOEXEC);
 
   updateIndexStreamPtr();
