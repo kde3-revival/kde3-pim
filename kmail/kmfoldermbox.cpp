@@ -53,6 +53,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <string.h>
 #include <sys/file.h>
 #include "broadcaststatus.h"
 using KPIM::BroadcastStatus;
@@ -175,9 +176,19 @@ int KMFolderMbox::open(const char *owner)
 
      if (!mIndexStream)
        rc = createIndexFromContents();
-     else
-       if (!readIndex() && mIndexReadResult != IndexReadHandled)
+     else if (!readIndex() && mIndexReadResult != IndexReadHandled) {
+       // An index that KMail did not close cleanly is usually still right
+       // (status changes not yet written are lost).  Keep it if it matches
+       // the mbox file, rather than re-parsing the mbox, which loses the
+       // status flags that are not stored in the messages.
+       if (mIndexReadResult == IndexReadDirty && readIndexFile(true, false)
+           && indexMatchesMbox()) {
+         kdWarning(5006) << "Index file " << indexLocation()
+                         << " matches the mbox file, keeping it" << endl;
+         updateIndex(); // mark it clean again
+       } else
          rc = createIndexFromContents();
+     }
   }
   else
   {
@@ -535,6 +546,52 @@ KMFolderIndex::IndexStatus KMFolderMbox::indexStatus()
       : KMFolderIndex::IndexOk;
 }
 
+
+//-----------------------------------------------------------------------------
+bool KMFolderMbox::indexMatchesMbox()
+{
+  struct stat st;
+  if (!mStream || fstat(fileno(mStream), &st) != 0)
+    return false;
+  const off_t fileSize = st.st_size;
+  off_t end = 0;
+  char buf[1024];
+  for (unsigned int i = 0; i < mMsgList.high(); ++i) {
+    KMMsgBase *mb = mMsgList.at(i);
+    if (!mb)
+      continue;
+    off_t offs = mb->folderOffset();
+    off_t size = mb->msgSize();
+    if (offs < 6 || size < 0 || offs + size > fileSize)
+      return false;
+    // the line before the message must be its "From " separator
+    off_t start = offs > (off_t)sizeof(buf) ? offs - sizeof(buf) : 0;
+    size_t n = offs - start;
+    if (fseek(mStream, start, SEEK_SET) != 0 || fread(buf, n, 1, mStream) != 1
+        || buf[n - 1] != '\n')
+      return false;
+    int lineStart = n - 1;
+    while (lineStart > 0 && buf[lineStart - 1] != '\n')
+      --lineStart;
+    if ((lineStart == 0 && start != 0) || n - lineStart < 6
+        || strncmp(buf + lineStart, "From ", 5) != 0)
+      return false;
+    if (offs + size > end)
+      end = offs + size;
+  }
+  // a message appended to the mbox but not to the index would follow here
+  if (fileSize - end > 2)
+    return false;
+  if (fileSize > end) {
+    if (fseek(mStream, end, SEEK_SET) != 0
+        || fread(buf, fileSize - end, 1, mStream) != 1)
+      return false;
+    for (off_t i = 0; i < fileSize - end; ++i)
+      if (buf[i] != '\n')
+        return false;
+  }
+  return true;
+}
 
 //-----------------------------------------------------------------------------
 int KMFolderMbox::createIndexFromContents()

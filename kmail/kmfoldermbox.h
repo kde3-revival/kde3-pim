@@ -147,6 +147,11 @@ protected:
   virtual int expungeContents();
 
 private:
+  /** Check an index that KMail did not close cleanly against the mbox
+      file: every message must start right after a "From " line within
+      the file and nothing but line breaks may follow the last one. */
+  bool indexMatchesMbox();
+
   FILE *mStream;
   bool mFilesLocked; // TRUE if the files of the folder are locked (writable)
   bool mReadOnly; // true if locking failed
