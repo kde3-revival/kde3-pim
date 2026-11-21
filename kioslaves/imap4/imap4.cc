@@ -869,7 +869,21 @@ IMAP4Protocol::put (const KURL & _url, int, bool, bool)
 
     imapCommand *cmd =
       sendCommand (imapCommand::clientAppend (aBox, aSection, length));
-    while (!parseLoop ()) ;
+    // wait for the "+" or the tagged refusal; untagged responses may come
+    // first, and a "* BYE" means the server is closing the connection
+    int pl;
+    do
+    {
+      while (!(pl = parseLoop ())) ;
+    }
+    while (pl != -1 && !cmd->isComplete () && getContinuation ().isEmpty ()
+           && getState () != ISTATE_NO);
+    if (pl == -1 || (getState () == ISTATE_NO && !cmd->isComplete ()))
+    {
+      // the error is out already if parseLoop() failed
+      connectionLost (ERR_CONNECTION_BROKEN);
+      return;
+    }
 
     // see if server is waiting
     if (!cmd->isComplete () && !getContinuation ().isEmpty ())
@@ -891,10 +905,8 @@ IMAP4Protocol::put (const KURL & _url, int, bool, bool)
         delete buffer;
         if (!sendOk)
         {
-          error (ERR_CONNECTION_BROKEN, myHost);
           completeQueue.removeRef (cmd);
-          setState(ISTATE_CONNECT);
-          closeConnection();
+          connectionLost (ERR_CONNECTION_BROKEN);
           return;
         }
       }
