@@ -2680,8 +2680,8 @@ ssize_t IMAP4Protocol::myRead(void *data, ssize_t len)
   if (!isConnectionValid()) return 0;
   if (!waitForResponse( responseTimeout() ))
   {
-    // the socket is non-blocking: after a timeout read() would fail with
-    // EAGAIN, and parseRead() would wait again, for ever
+    // nothing came: do not read(), the socket is blocking (see
+    // TCPSlaveBase::connectToHost()) and read() would wait for ever
     errno = ETIMEDOUT;
     return -1;
   }
