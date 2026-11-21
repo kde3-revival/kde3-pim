@@ -772,6 +772,10 @@ void KMFolderIndex::setSerNum(unsigned long serNum, const KMMsgBase *msg,
 
 void KMFolderIndex::fillMessageDict()
 {
+  // Forget the old serial numbers first: they point to positions that may
+  // now hold other messages, and slots beyond the new message count would
+  // otherwise be written to the .ids file again.
+  takeSerNums();
   open("fillDict");
   for (unsigned int idx = 0; idx < mMsgList.high(); idx++)
     if ( mMsgList.at( idx ) )
