@@ -1311,11 +1311,12 @@ void KMFolderImap::slotListFolderResult(KIO::Job * job)
           flagsToStatus( msgBase, serverFlags, false, supportedFlags );
         } else
           seenFlagToStatus( msgBase, serverFlags, false );
-        idx++;
         uid = (*it).items.remove(uid);
-        if ( msgBase->getMsgSerNum() > 0 ) {
+        // the index is known: don't make getMsgSerNum() search the folder
+        if ( msgBase->getMsgSerNum( idx ) > 0 ) {
           saveMsgMetaData( static_cast<KMMessage*>(msgBase) );
         }
+        idx++;
       }
       else break;  // happens only, if deleted mails reappear on the server
     }
