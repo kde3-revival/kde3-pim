@@ -176,7 +176,7 @@ int KMFolderMbox::open(const char *owner)
      if (!mIndexStream)
        rc = createIndexFromContents();
      else
-       if (!readIndex())
+       if (!readIndex() && mIndexReadResult != IndexReadHandled)
          rc = createIndexFromContents();
   }
   else

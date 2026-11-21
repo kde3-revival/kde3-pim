@@ -112,9 +112,22 @@ protected:
   bool readIndex();
 
   /** Like readIndex(), but with @p acceptDirty also reads an index that is
-      marked dirty (see markIndexDirty()), as long as its entries are
-      intact.  The caller must then check it against the folder contents. */
-  bool readIndexFile(bool acceptDirty);
+      marked dirty (see markIndexDirty()), and with @p acceptPrefix keeps
+      the intact entries before the first damaged one instead of failing.
+      The caller must then check the result against the folder contents. */
+  bool readIndexFile(bool acceptDirty, bool acceptPrefix);
+
+  /** Why the last readIndex()/readIndexFile() failed. */
+  enum IndexReadResult {
+    IndexReadOk,
+    IndexReadBadHeader, // no usable header: recreate the index
+    IndexReadHandled,   // the header code already recreated the index, or
+                        // the user chose to keep an index of a newer KMail
+    IndexReadDirty,     // marked dirty, entries not checked
+    IndexReadBadEntry,  // a damaged entry
+    IndexReadFailed     // anything else (the stream may have been closed)
+  };
+  IndexReadResult mIndexReadResult;
 
   /** Read index header. Called from within readIndex(). */
   bool readIndexHeader(int *gv=0);

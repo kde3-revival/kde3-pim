@@ -107,6 +107,7 @@ KMFolderIndex::KMFolderIndex(KMFolder* folder, const char* name)
     mRecreateIndexPending = false;
     mIndexStateOffset = 0;
     mIndexMarkedDirty = false;
+    mIndexReadResult = IndexReadOk;
     mIndexSyncTimer = new QTimer(this, "mIndexSyncTimer");
     connect(mIndexSyncTimer, SIGNAL(timeout()), SLOT(slotSyncIndex()));
 }
@@ -407,10 +408,10 @@ static bool isValidIndexEntry(const uchar *buf, int len, bool swapByteOrder,
 
 bool KMFolderIndex::readIndex()
 {
-  return readIndexFile(false);
+  return readIndexFile(false, false);
 }
 
-bool KMFolderIndex::readIndexFile(bool acceptDirty)
+bool KMFolderIndex::readIndexFile(bool acceptDirty, bool acceptPrefix)
 {
   Q_INT32 len;
   KMMsgInfo* mi;
@@ -423,13 +424,16 @@ bool KMFolderIndex::readIndexFile(bool acceptDirty)
 
   setDirty( false );
 
+  mIndexReadResult = IndexReadBadHeader;
   if (!readIndexHeader(&version)) return false;
 
   if (mIndexMarkedDirty && !acceptDirty) {
     kdWarning(5006) << "Index file " << indexLocation()
                     << " was not closed cleanly" << endl;
+    mIndexReadResult = IndexReadDirty;
     return false;
   }
+  mIndexReadResult = IndexReadFailed;
 
   mUnreadMsgs = 0;
   mTotalMsgs = 0;
@@ -456,6 +460,9 @@ bool KMFolderIndex::readIndexFile(bool acceptDirty)
       if(!fread(&len, sizeof(len), 1, mIndexStream)) {
         kdWarning(5006) << "Index file " << indexLocation()
                         << ": truncated entry at offset " << lenOffs << endl;
+        if (acceptPrefix)
+          break;
+        mIndexReadResult = IndexReadBadEntry;
         clearIndex();
         return false;
       }
@@ -469,6 +476,9 @@ bool KMFolderIndex::readIndexFile(bool acceptDirty)
         kdWarning(5006) << "Index file " << indexLocation()
                         << ": invalid entry length " << len << " at offset "
                         << lenOffs << " (file size " << fileSize << ")" << endl;
+        if (acceptPrefix)
+          break;
+        mIndexReadResult = IndexReadBadEntry;
         clearIndex();
         return false;
       }
@@ -478,6 +488,9 @@ bool KMFolderIndex::readIndexFile(bool acceptDirty)
                                 mIndexSwapByteOrder, sizeOfLong)) {
         kdWarning(5006) << "Index file " << indexLocation()
                         << ": invalid entry at offset " << lenOffs << endl;
+        if (acceptPrefix)
+          break;
+        mIndexReadResult = IndexReadBadEntry;
         clearIndex();
         return false;
       }
@@ -535,6 +548,7 @@ bool KMFolderIndex::readIndexFile(bool acceptDirty)
     writeIndex();
   }
   mTotalMsgs = mMsgList.count();
+  mIndexReadResult = IndexReadOk;
   return true;
 }
 
@@ -572,6 +586,7 @@ bool KMFolderIndex::readIndexHeader(int *gv)
   } else if (indexVersion < INDEX_VERSION) {
       kdDebug(5006) << "Index file " << indexLocation() << " is out of date. Re-creating it." << endl;
       createIndexFromContents();
+      mIndexReadResult = IndexReadHandled;
       return false;
   } else if(indexVersion > INDEX_VERSION) {
       kapp->setOverrideCursor(KCursor::arrowCursor());
@@ -584,6 +599,8 @@ bool KMFolderIndex::readIndexHeader(int *gv)
       kapp->restoreOverrideCursor();
       if (r == KMessageBox::Yes)
 	  createIndexFromContents();
+      // either recreated, or the user wants to keep the newer index
+      mIndexReadResult = IndexReadHandled;
       return false;
   }
   else {

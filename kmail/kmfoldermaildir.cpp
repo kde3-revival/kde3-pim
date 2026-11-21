@@ -134,17 +134,25 @@ int KMFolderMaildir::open(const char *)
     if (!mIndexStream)
       rc = createIndexFromContents();
     else if (status != KMFolderIndex::IndexOk || !readIndex()) {
-      emit statusMsg(i18n("Folder `%1' changed; recreating index.")
-                     .arg(name()));
-      if ((status != KMFolderIndex::IndexOk || mIndexMarkedDirty)
-          && readIndexFile(true))
+      if (status == KMFolderIndex::IndexOk
+          && mIndexReadResult == IndexReadHandled)
+        ; // already recreated, or an index of a newer KMail kept on request
+      else {
+        emit statusMsg(i18n("Folder `%1' changed; recreating index.")
+                       .arg(name()));
         // The folder changed behind the index (another program delivered
-        // mail, or KMail did not close the index cleanly), but the entries
-        // are intact: keep them for the files that are still there.
-        rc = reconcileIndexWithContents();
-      else
-        // the index is corrupt (e.g. truncated by a crash): rebuild it
-        rc = createIndexFromContents();
+        // mail), or KMail did not close the index cleanly, or its end was
+        // damaged by a crash: keep the intact entries for the files that
+        // are still there and add the others.
+        if (mIndexStream
+            && (status != KMFolderIndex::IndexOk
+                || mIndexReadResult != IndexReadBadHeader)
+            && readIndexFile(true, true))
+          rc = reconcileIndexWithContents();
+        else if (mIndexReadResult != IndexReadHandled)
+          // no usable index at all: rebuild it
+          rc = createIndexFromContents();
+      }
     }
   }
   else
