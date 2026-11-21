@@ -147,8 +147,9 @@ private slots:
   void slotDirSizeJobResult( KIO::Job* job );
 
 private:
-  /** Bring the message list read from an index that was not closed cleanly
-      in line with the files of the folder and rewrite the index.  Unlike
+  /** Bring the message list read from an index that is older than the
+      folder or was not closed cleanly in line with the files of the folder
+      and rewrite the index.  Unlike
       createIndexFromContents() this keeps the status of the messages that
       are still there. */
   int reconcileIndexWithContents();

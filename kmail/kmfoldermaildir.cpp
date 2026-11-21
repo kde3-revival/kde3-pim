@@ -119,13 +119,10 @@ int KMFolderMaildir::open(const char *)
 
   if (!folder()->path().isEmpty())
   {
-    if (KMFolderIndex::IndexOk != indexStatus()) // test if contents file has changed
-    {
-      QString str;
+    // test if contents file has changed
+    KMFolderIndex::IndexStatus status = indexStatus();
+    if (status == KMFolderIndex::IndexMissing) {
       mIndexStream = 0;
-      str = i18n("Folder `%1' changed; recreating index.")
-		  .arg(name());
-      emit statusMsg(str);
     } else {
       mIndexStream = fopen(QFile::encodeName(indexLocation()), "r+"); // index file
       if ( mIndexStream ) {
@@ -136,12 +133,14 @@ int KMFolderMaildir::open(const char *)
 
     if (!mIndexStream)
       rc = createIndexFromContents();
-    else if (!readIndex()) {
+    else if (status != KMFolderIndex::IndexOk || !readIndex()) {
       emit statusMsg(i18n("Folder `%1' changed; recreating index.")
                      .arg(name()));
-      if (mIndexMarkedDirty && readIndexFile(true))
-        // KMail did not close the index cleanly, but its entries are
-        // intact: keep them for the files that are still there
+      if ((status != KMFolderIndex::IndexOk || mIndexMarkedDirty)
+          && readIndexFile(true))
+        // The folder changed behind the index (another program delivered
+        // mail, or KMail did not close the index cleanly), but the entries
+        // are intact: keep them for the files that are still there.
         rc = reconcileIndexWithContents();
       else
         // the index is corrupt (e.g. truncated by a crash): rebuild it
