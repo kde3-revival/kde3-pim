@@ -68,6 +68,7 @@ imap://server/folder/
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -311,11 +312,18 @@ IMAP4Protocol::get (const KURL & _url)
         QString mySection = aSection;
         mySection.replace("]", ".MIME]");
         cmd = sendCommand (imapCommand::clientFetch (aSequence, mySection));
+        int pl;
         do
         {
-          while (!parseLoop ()) ;
+          while (!(pl = parseLoop ())) ;
         }
-        while (!cmd->isComplete ());
+        while (pl != -1 && !cmd->isComplete ());
+        if (pl == -1)
+        {
+          // parseReadLine() has reported the error and closed the connection
+          relayEnabled = false;
+          return;
+        }
         completeQueue.removeRef (cmd);
         // get the content encoding now because getLastHandled will be cleared
         if (getLastHandled() && getLastHandled()->getHeader())
@@ -374,6 +382,13 @@ IMAP4Protocol::get (const KURL & _url)
         } // if not complete
       }
       while (cmd && !cmd->isComplete ());
+      if (res == -1)
+      {
+        // parseReadLine() has reported the error and closed the connection
+        relayEnabled = false;
+        cacheOutput = false;
+        return;
+      }
       if (aEnum == ITYPE_BOX || aEnum == ITYPE_DIR_AND_BOX)
       {
         // write the end boundary
@@ -595,7 +610,10 @@ IMAP4Protocol::listDir (const KURL & _url)
         imapCache *cache;
         do
         {
-          while (!parseLoop ()) ;
+          int pl;
+          while (!(pl = parseLoop ())) ;
+          if (pl == -1)
+            return; // parseReadLine() has reported the error
 
           cache = getLastHandled ();
 
@@ -671,10 +689,11 @@ bool IMAP4Protocol::parseRead(QByteArray & buffer, ulong len, ulong relay)
   while (buffer.size() < len)
   {
     ssize_t readLen = myRead(buf, QMIN(len - buffer.size(), sizeof(buf) - 1));
-    if (readLen == 0)
+    if (readLen <= 0)
     {
-      kdDebug(7116) << "parseRead: readLen == 0 - connection broken" << endl;
-      error (ERR_CONNECTION_BROKEN, myHost);
+      const bool timedOut = readLen < 0 && errno == ETIMEDOUT;
+      kdDebug(7116) << "parseRead: readLen == " << readLen << " - connection broken" << endl;
+      error (timedOut ? ERR_SERVER_TIMEOUT : ERR_CONNECTION_BROKEN, myHost);
       setState(ISTATE_CONNECT);
       closeConnection();
       return FALSE;
@@ -761,6 +780,11 @@ bool IMAP4Protocol::parseReadLine (QByteArray & buffer, ulong relay)
       closeConnection();
       return FALSE;
     }
+    // read() failed (EINTR, or an error isConnectionValid() reports next
+    // time round): do not leave -1 in readBufferLen, myRead() would memcpy
+    // with it
+    if (readBufferLen < 0)
+      readBufferLen = 0;
   }
 }
 
@@ -1240,6 +1264,8 @@ IMAP4Protocol::special (const QByteArray & aData)
   {
     // NOOP
     imapCommand *cmd = doCommand(imapCommand::clientNoop());
+    if (!cmd->isComplete ())
+      return; // parseReadLine() has reported the error
     if (cmd->result () != "OK")
     {
       kdDebug(7116) << "NOOP did not succeed - connection broken" << endl;
@@ -1624,11 +1650,14 @@ IMAP4Protocol::specialCustomCommand( QDataStream& stream )
     }
     parseWriteLine ("");
 
+    int pl;
     do
     {
-      while (!parseLoop ()) ;
+      while (!(pl = parseLoop ())) ;
     }
-    while (!cmd->isComplete ());
+    while (pl != -1 && !cmd->isComplete ());
+    if (pl == -1)
+      return; // parseReadLine() has reported the error
 
     completeQueue.removeRef (cmd);
 
@@ -2649,7 +2678,13 @@ ssize_t IMAP4Protocol::myRead(void *data, ssize_t len)
     return copyLen;
   }
   if (!isConnectionValid()) return 0;
-  waitForResponse( responseTimeout() );
+  if (!waitForResponse( responseTimeout() ))
+  {
+    // the socket is non-blocking: after a timeout read() would fail with
+    // EAGAIN, and parseRead() would wait again, for ever
+    errno = ETIMEDOUT;
+    return -1;
+  }
   return read(data, len);
 }
 
