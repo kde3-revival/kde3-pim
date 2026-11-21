@@ -24,6 +24,7 @@
 #include <kconfig.h>
 #include <kapplication.h>
 
+#include <qapplication.h>
 #include <qregexp.h>
 #include <qvaluelist.h>
 
@@ -454,6 +455,15 @@ void AccountManager::checkMailAfterResume()
 {
   if ( !mSleeping )
     return;
+  // A modal dialog runs a nested event loop: the password dialog of
+  // makeConnection(), a question of a cached IMAP sync, a POP message
+  // box...  Its caller goes on when it is closed, perhaps with a job the
+  // sleep killed: do not start checks under it.
+  if ( QWidget *modal = QApplication::activeModalWidget() ) {
+    kdDebug(5006) << "modal dialog \"" << modal->caption() << "\" open, checking mail later" << endl;
+    mResumeTimer.start( 5 * 1000, true );
+    return;
+  }
   // an error dialog runs a nested event loop: do not start checks under it
   for ( AccountList::ConstIterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it ) {
     ImapAccountBase *imap = dynamic_cast<ImapAccountBase*>( *it );
