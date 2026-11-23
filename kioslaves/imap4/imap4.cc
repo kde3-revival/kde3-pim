@@ -178,6 +178,7 @@ IMAP4Protocol::IMAP4Protocol (const QCString & pool, const QCString & app, bool 
   cacheOutput = false;
   decodeContent = false;
   mTimeOfLastNoop = QDateTime();
+  mUnselect = -1;
 }
 
 IMAP4Protocol::~IMAP4Protocol ()
@@ -1188,8 +1189,12 @@ IMAP4Protocol::del (const KURL & _url, bool isFile)
     }
     else
     {
-      if (getCurrentBox() == aBox)
-        deselectBox(); // the DELETE may fail: no expunge before it
+      // the DELETE may fail: no expunge before it
+      if (getCurrentBox() == aBox && !deselectBox())
+      {
+        error (ERR_COULD_NOT_RMDIR, _url.prettyURL());
+        return;
+      }
       // We unsubscribe, otherwise we get ghost folders on UW-IMAP
       imapCommand *cmd = doCommand(imapCommand::clientUnsubscribe(aBox));
       completeQueue.removeRef(cmd);
@@ -2070,9 +2075,15 @@ void IMAP4Protocol::openConnection()
 
 void IMAP4Protocol::closeConnection()
 {
+  closeConnection (true);
+}
+
+void IMAP4Protocol::closeConnection (bool mayExpunge)
+{
   listedBoxes.clear(); // what the boxes are is known per connection
+  mUnselect = -1;
   if (getState() == ISTATE_NO) return;
-  if (getState() == ISTATE_SELECT && metaData("expunge") == "auto")
+  if (mayExpunge && getState() == ISTATE_SELECT && metaData("expunge") == "auto")
   {
     imapCommand *cmd = doCommand (imapCommand::clientExpunge());
     completeQueue.removeRef (cmd);
@@ -2114,6 +2125,7 @@ bool IMAP4Protocol::makeLogin ()
 
     setState(ISTATE_CONNECT);
     listedBoxes.clear(); // also after a BYE that left the state as it was
+    mUnselect = -1;
     if (!alreadyConnected)
     {
       mConnectionErrorReported = false;
@@ -2786,15 +2798,17 @@ ssize_t IMAP4Protocol::myRead(void *data, ssize_t len)
 // CLOSE would expunge the messages marked \Deleted (RFC 3501 6.4.2):
 // UNSELECT (RFC 3691) where the server has it, else EXAMINE of a box that
 // does not exist: a failed SELECT or EXAMINE leaves no box selected, and
-// neither expunges (RFC 3501 6.3.1, 6.3.2).  Should a box of that name
-// exist, it is the selected one now, read-only.  (No '.' in the name: a
-// server may refuse it before it deselects, e.g. Dovecot with Maildir++.)
+// neither expunges (RFC 3501 6.3.1, 6.3.2).  Only a tagged NO is such a
+// failure; BAD rejects the command itself, which may not have deselected
+// anything.  When it is not proven that the box is no longer selected, log
+// out without expunging: the caller fails, the next job connects again.
+// (No '.' in the name: a server may refuse it before it deselects, e.g.
+// Dovecot with Maildir++.)
 bool
 IMAP4Protocol::deselectBox ()
 {
-  const QString box = getCurrentBox();
   imapCommand *cmd;
-  if (hasCapability("UNSELECT"))
+  if (canUnselect())
   {
     cmd = doCommand (new imapCommand ("UNSELECT", ""));
     const bool ok = cmd->result () == "OK";
@@ -2810,10 +2824,60 @@ IMAP4Protocol::deselectBox ()
   cmd = doCommand (new imapCommand ("EXAMINE", "\"" +
       rfcDecoder::toIMAP (QString ("kio_imap4 no such folder %1 %2")
                           .arg (getpid ()).arg (time (0))) + "\""));
+  const QString result = cmd->result ();
+  const QString resultInfo = cmd->resultInfo ();
   completeQueue.removeRef (cmd);
-  if (getState() == ISTATE_LOGIN)
+  selectInfo = imapInfo(); // nothing of a box the application knows
+  if (getState() == ISTATE_NO)
+    return false; // the connection is gone, nothing more is sent on it
+  if (result == "NO")
+  {
+    // the parser has left the selected state already
+    setState(ISTATE_LOGIN);
+    currentBox = QString::null;
     return true;
-  return getState() == ISTATE_SELECT && getCurrentBox() != box;
+  }
+  if (result == "OK" && resultInfo.find ("[READ-ONLY]", 0, false) != -1)
+  {
+    // a box of that name exists (or the server made one): it is selected
+    // now, read-only, and the earlier box is not.  CLOSE of a box selected
+    // read-only removes nothing (RFC 3501 6.4.2); it leaves no box
+    // selected, so that the name is never taken for one of the account.
+    cmd = doCommand (imapCommand::clientClose());
+    const bool closed = cmd->result () == "OK";
+    completeQueue.removeRef (cmd);
+    if (closed)
+    {
+      setState(ISTATE_LOGIN);
+      currentBox = QString::null;
+      return true;
+    }
+    if (getState() == ISTATE_NO)
+      return false;
+  }
+  kdWarning(7116) << "IMAP4::deselectBox - the server answered " << result
+    << " " << resultInfo << ": logging out without expunge" << endl;
+  closeConnection (false);
+  return false;
+}
+
+// UNSELECT may be announced only once logged in: the capabilities before
+// login stay what the rest of the slave goes by, this asks again only for
+// UNSELECT, once per connection and only when a box has to be left
+bool
+IMAP4Protocol::canUnselect ()
+{
+  if (hasCapability ("UNSELECT"))
+    return true;
+  if (mUnselect == -1 && getState() != ISTATE_NO)
+  {
+    const QStringList before = imapCapabilities;
+    imapCommand *cmd = doCommand (new imapCommand ("CAPABILITY", ""));
+    completeQueue.removeRef (cmd);
+    mUnselect = hasCapability ("UNSELECT") ? 1 : 0;
+    imapCapabilities = before;
+  }
+  return mUnselect == 1;
 }
 
 bool

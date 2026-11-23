@@ -132,8 +132,15 @@ protected:
 
   // select or examine the box if needed
   bool assureBox (const QString & aBox, bool readonly);
-  /** Leaves the selected box without expunging it (no CLOSE). */
+  /** Leaves the selected box without expunging it (no CLOSE).  When the
+      server leaves it unproven whether the box is still selected, logs out
+      without expunging and returns false. */
   bool deselectBox ();
+  /** Whether the server has UNSELECT once logged in (RFC 3691). */
+  bool canUnselect ();
+  /** Logs out and closes the connection; with @p mayExpunge false never
+      expunges, whatever the "expunge" metadata says. */
+  void closeConnection (bool mayExpunge);
 
   ssize_t myRead(void *data, ssize_t len);
   /** Report the broken connection (once) and close it. */
@@ -209,6 +216,8 @@ private:
   bool mLoggingOut;
   int readSize;
   QDateTime mTimeOfLastNoop;
+  /** UNSELECT after login: -1 not asked yet on this connection, 0 no, 1 yes */
+  int mUnselect;
 };
 
 #endif

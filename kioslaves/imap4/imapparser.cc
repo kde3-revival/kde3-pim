@@ -644,6 +644,10 @@ imapParser::parseResult (QByteArray & result, parseString & rest,
     break;
 
   case 'E':
+    // a SELECT or EXAMINE that failed with NO left no box selected; after
+    // BAD that is not certain, but taking it as no box keeps whatever
+    // depends on the selected box (an expunge) from being sent.  Leaving
+    // a box on purpose looks at the result itself (deselectBox()).
     if (command == "EXAMINE")
     {
       if (qstrncmp(result, "OK", result.size()) == 0)
