@@ -946,6 +946,7 @@ IMAP4Protocol::put (const KURL & _url, int, bool, bool)
         return;
       }
       else if (cmd->result () != "OK") {
+        listedBoxes.remove (aBox); // it may be gone ([TRYCREATE])
         error( ERR_SLAVE_DEFINED, cmd->resultInfo() );
         completeQueue.removeRef (cmd);
         return;
@@ -975,6 +976,7 @@ IMAP4Protocol::put (const KURL & _url, int, bool, bool)
     else
     {
       //error (ERR_COULD_NOT_WRITE, myHost);
+      listedBoxes.remove (aBox); // it may be gone ([TRYCREATE])
       // Better ship the error message, e.g. "Over Quota"
       error (ERR_SLAVE_DEFINED, cmd->resultInfo());
       completeQueue.removeRef (cmd);
@@ -1121,6 +1123,7 @@ IMAP4Protocol::copy (const KURL & src, const KURL & dest, int, bool overwrite)
       doCommand (imapCommand::clientCopy (dBox, sSequence));
     if (cmd->result () != "OK")
     {
+      listedBoxes.remove (dBox); // it may be gone ([TRYCREATE])
       kdError(5006) << "IMAP4::copy - " << cmd->resultInfo() << endl;
       error (ERR_COULD_NOT_WRITE, dest.prettyURL());
       completeQueue.removeRef (cmd);

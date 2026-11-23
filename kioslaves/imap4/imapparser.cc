@@ -717,6 +717,82 @@ void imapParser::parseList (parseString & result)
     listedBoxes.replace (this_one.name (), this_one);
 }
 
+// Whether a LIST mailbox pattern covers a name (RFC 3501 6.3.8): '*'
+// matches any characters, '%' any but the hierarchy delimiter.
+static bool listPatternCovers (const QString & pattern, uint p,
+                               const QString & name, uint n,
+                               const QString & delimiter)
+{
+  while (p < pattern.length ())
+  {
+    const QChar c = pattern[p];
+    if (c == '*' || c == '%')
+    {
+      for (uint k = n; ; ++k)
+      {
+        if (listPatternCovers (pattern, p + 1, name, k, delimiter))
+          return true;
+        if (k >= name.length ())
+          return false;
+        if (c == '%' && !delimiter.isEmpty ()
+            && name.mid (k, delimiter.length ()) == delimiter)
+          return false;
+      }
+    }
+    if (n >= name.length () || name[n] != c)
+      return false;
+    ++p;
+    ++n;
+  }
+  return n == name.length ();
+}
+
+// INBOX is the same name in any case (RFC 3501 5.1); LIST matches it as
+// "INBOX"
+static QString listName (const QString & name)
+{
+  return name.upper () == "INBOX" ? QString ("INBOX") : name;
+}
+
+// A LIST that succeeded returned every box its pattern covers: a listed box
+// it covers but did not return is gone (or not to be seen any more), and is
+// listed again when it is used.  Only for the plain form the slave sends,
+// an empty reference and one quoted pattern: a reference, a pattern list or
+// LIST-EXTENDED options would need their own rules to say what is covered.
+void imapParser::forgetUnlisted (const QString & parameter)
+{
+  if (listedBoxes.isEmpty () || !parameter.startsWith ("\"\" \""))
+    return;
+  parseString p;
+  p.fromString (parameter);
+  const QString reference = rfcDecoder::fromIMAP (parseOneWordC (p));
+  if (!reference.isEmpty () || p.isEmpty () || p[0] != '"')
+    return;
+  const QString pattern = listName (rfcDecoder::fromIMAP (parseOneWordC (p)));
+  if (!p.isEmpty ())
+    return;
+
+  QStringList gone;
+  for (QMap < QString, imapList >::ConstIterator it = listedBoxes.begin ();
+       it != listedBoxes.end (); ++it)
+  {
+    const QString name = listName (it.key ());
+    if (!listPatternCovers (pattern, 0, name, 0, (*it).hierarchyDelimiter ()))
+      continue;
+    bool returned = false;
+    for (QValueListConstIterator < imapList > r = listResponses.begin ();
+         r != listResponses.end () && !returned; ++r)
+      returned = listName ((*r).name ()) == name;
+    if (!returned)
+      gone.append (it.key ());
+  }
+  for (QStringList::ConstIterator it = gone.begin (); it != gone.end (); ++it)
+  {
+    kdDebug(7116) << "imapParser::forgetUnlisted - " << *it << endl;
+    listedBoxes.remove (*it);
+  }
+}
+
 void imapParser::parseLsub (parseString & result)
 {
   imapList this_one (result.cstr(), *this);
@@ -1803,6 +1879,8 @@ int imapParser::parseLoop ()
 
           sentQueue.removeRef (current);
           completeQueue.append (current);
+          if (current->command() == "LIST" && current->result() == "OK")
+            forgetUnlisted (current->parameter());
           if (result.length())
             parseResult (resultCode, result, current->command());
         }

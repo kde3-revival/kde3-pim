@@ -273,6 +273,9 @@ public:
   void parseList (parseString & result);
   /** @brief parse a LSUB line */
   void parseLsub (parseString & result);
+  /** @brief after a LIST with the parameters @p parameter succeeded:
+      forget the listed boxes its pattern covers that it did not return */
+  void forgetUnlisted (const QString & parameter);
   /** @brief parse a LISTRIGHTS line */
   void parseListRights (parseString & result);
   /** @brief parse a MYRIGHTS line */
