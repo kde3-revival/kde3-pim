@@ -885,6 +885,14 @@ void KMReaderWin::update( KMail::Interface::Observable * observable )
   if ( !mAtmUpdate ) {
     // reparse the msg
     kdDebug(5006) << "KMReaderWin::update - message" << endl;
+    if ( mWebWriter ) {
+      // WebKit shows every document it gets: parts of a message that
+      // arrive one after the other (IMAP load on demand) would each show
+      // the message again.  One update for a burst of them: 200 ms after
+      // the last one (the cover of a message switch stays up meanwhile).
+      mUpdateReaderWinTimer.start( 200, true );
+      return;
+    }
     updateReaderWin();
     return;
   }
