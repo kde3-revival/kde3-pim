@@ -263,6 +263,11 @@ static const KMail::BodyPartFormatter * createForMultiPart( const char * subtype
       if ( kasciistricmp( subtype, "encrypted" ) == 0 )
 	return MultiPartEncryptedBodyPartFormatter::create();
       break;
+    case 'r':
+    case 'R':
+      if ( kasciistricmp( subtype, "related" ) == 0 )
+	return MultiPartRelatedBodyPartFormatter::create();
+      break;
     case 's':
     case 'S':
       if ( kasciistricmp( subtype, "signed" ) == 0 )
