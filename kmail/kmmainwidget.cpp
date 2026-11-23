@@ -1961,7 +1961,21 @@ void KMMainWidget::folderSelected()
 //-----------------------------------------------------------------------------
 void KMMainWidget::folderSelected( KMFolder* aFolder, bool forceJumpToUnread )
 {
-  KCursorSaver busy(KBusyPtr::busy());
+  // Busy only while there is work here.  An online IMAP folder that isn't
+  // complete yet is only requested; it comes back through folderSelected()
+  // when it is, and a busy cursor for the request as well made the cursor
+  // flicker (busy, normal while the server answers, busy again).
+  const bool onlyRequest = aFolder && aFolder->folderType() == KMFolderTypeImap
+      && (KMFolder*)mFolder != aFolder && !aFolder->noContent() && !kmkernel->isOffline();
+  struct BusyCursor {
+    const bool on;
+    BusyCursor( bool on_ ) : on( on_ ) {
+      if ( on ) QApplication::setOverrideCursor( QCursor( QCursor::WaitCursor ) );
+    }
+    ~BusyCursor() {
+      if ( on ) QApplication::restoreOverrideCursor();
+    }
+  } busy( !onlyRequest );
 
   if (mMsgView)
     mMsgView->clear(true);
