@@ -479,12 +479,12 @@ void KMReaderWin::createWidgets() {
   mBox->setFrameStyle( mMimePartTree->frameStyle() );
   mColorBar = new HtmlStatusBar( mBox, "mColorBar" );
   mViewer = new KHTMLPart( mBox, "mViewer" );
-  // [Reader] HtmlEngine=webkit: WPE WebKit (kde3-wpepart's mail mode)
-  // shows the messages; KHTML if it is not there.
+  // [Reader] HtmlEngine=webkit (the default): WPE WebKit (kde3-wpepart's
+  // mail mode) shows the messages; KHTML if it is not there or chosen.
   mWebPart = 0;
   mWebWriter = 0;
   KConfigGroup reader( KMKernel::config(), "Reader" );
-  if ( reader.readEntry( "HtmlEngine", "khtml" ) == "webkit" ) {
+  if ( reader.readEntry( "HtmlEngine", "webkit" ) == "webkit" ) {
     int error = 0;
     mWebPart = KParts::ComponentFactory::createPartInstanceFromLibrary<KParts::ReadOnlyPart>(
       "libkwpepart", mBox, "mWebViewer", this, "mWebPart", QStringList( "mode=mail" ), &error );

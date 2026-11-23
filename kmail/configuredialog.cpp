@@ -109,6 +109,8 @@ using KMime::DateFormatter;
 #include <qhbuttongroup.h>
 #include <qtooltip.h>
 #include <qlabel.h>
+#include <qhbox.h>
+#include <qcombobox.h>
 #include <qtextcodec.h>
 #include <qheader.h>
 #include <qpopupmenu.h>
@@ -3710,6 +3712,25 @@ SecurityPageGeneralTab::SecurityPageGeneralTab( QWidget * parent, const char * n
   QWhatsThis::add( mExternalReferences, externalWhatsThis );
   connect( mExternalReferences, SIGNAL( stateChanged( int ) ),
            this, SLOT( slotEmitChanged( void ) ) );
+  // which engine shows the messages; read when a reader window is made
+  QHBox *engineBox = new QHBox( group );
+  engineBox->setSpacing( KDialog::spacingHint() );
+  QLabel *engineLabel = new QLabel( i18n("Show messages &with:"), engineBox );
+  mHtmlEngineCombo = new QComboBox( false, engineBox );
+  mHtmlEngineCombo->insertItem( i18n("WebKit (current web standards, isolated, nothing loaded from outside)") );
+  mHtmlEngineCombo->insertItem( i18n("KHTML (the classic engine of KDE 3)") );
+  engineLabel->setBuddy( mHtmlEngineCombo );
+  engineBox->setStretchFactor( mHtmlEngineCombo, 1 );
+  QWhatsThis::add( mHtmlEngineCombo,
+                   i18n("<qt><p>The engine that shows messages in the reader. <b>WebKit</b> shows HTML "
+                        "messages as current web browsers do; every message is cleaned and shown on its "
+                        "own, it cannot run scripts, and nothing is loaded from the Internet unless you "
+                        "allow external references. <b>KHTML</b> is the engine of KDE 3.5.</p>"
+                        "<p>The change applies to reader windows opened afterwards; restart KMail for the "
+                        "main window.</p></qt>") );
+  connect( mHtmlEngineCombo, SIGNAL( activated( int ) ),
+           this, SLOT( slotEmitChanged( void ) ) );
+
   label = new KActiveLabel( i18n("<b>WARNING:</b> Allowing HTML in email may "
                            "increase the risk that your system will be "
                            "compromised by present and anticipated security "
@@ -3814,6 +3835,7 @@ void SecurityPage::GeneralTab::doLoadOther() {
   const KConfigGroup reader( KMKernel::config(), "Reader" );
 
   mHtmlMailCheck->setChecked( reader.readBoolEntry( "htmlMail", false ) );
+  mHtmlEngineCombo->setCurrentItem( reader.readEntry( "HtmlEngine", "webkit" ) == "khtml" ? 1 : 0 );
   mExternalReferences->setChecked( reader.readBoolEntry( "htmlLoadExternal", false ) );
   mAutomaticallyImportAttachedKeysCheck->setChecked( reader.readBoolEntry( "AutoImportKeys", false ) );
 
@@ -3836,6 +3858,8 @@ void SecurityPage::GeneralTab::installProfile( KConfig * profile ) {
 
   if ( reader.hasKey( "htmlMail" ) )
     mHtmlMailCheck->setChecked( reader.readBoolEntry( "htmlMail" ) );
+  if ( reader.hasKey( "HtmlEngine" ) )
+    mHtmlEngineCombo->setCurrentItem( reader.readEntry( "HtmlEngine" ) == "khtml" ? 1 : 0 );
   if ( reader.hasKey( "htmlLoadExternal" ) )
     mExternalReferences->setChecked( reader.readBoolEntry( "htmlLoadExternal" ) );
   if ( reader.hasKey( "AutoImportKeys" ) )
@@ -3884,6 +3908,7 @@ void SecurityPage::GeneralTab::save() {
       }
     }
   }
+  reader.writeEntry( "HtmlEngine", mHtmlEngineCombo->currentItem() == 1 ? "khtml" : "webkit" );
   reader.writeEntry( "htmlLoadExternal", mExternalReferences->isChecked() );
   reader.writeEntry( "AutoImportKeys", mAutomaticallyImportAttachedKeysCheck->isChecked() );
   mdn.writeEntry( "default-policy", mMDNGroup->id( mMDNGroup->selected() ) );

@@ -829,6 +829,7 @@ private:
 private:
   QCheckBox    *mExternalReferences;
   QCheckBox    *mHtmlMailCheck;
+  QComboBox    *mHtmlEngineCombo;
   QCheckBox    *mNoMDNsWhenEncryptedCheck;
   QButtonGroup *mMDNGroup;
   QButtonGroup *mOrigQuoteGroup;
