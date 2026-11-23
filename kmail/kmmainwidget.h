@@ -407,6 +407,8 @@ protected slots:
 
   /** Show a splash screen for the longer-lasting operation */
   void slotShowBusySplash();
+  /** an online IMAP folder still on its way: the busy cursor, until it is there */
+  void slotFolderBusyCursor();
   /** Show a message screen explaining that we are currently offline, when
    * an online folder is selected. */
   void showOfflinePage();

@@ -136,6 +136,9 @@ using KPIM::ProgressManager;
 
 #include "kmmainwidget.moc"
 
+// how long an online IMAP folder may take before the cursor shows busy
+static const int FolderBusyDelay = 400;
+
 QValueList<KMMainWidget*>* KMMainWidget::s_mainWidgetList = 0;
 static KStaticDeleter<QValueList<KMMainWidget*> > mwlsd;
 
@@ -263,6 +266,10 @@ KMMainWidget::KMMainWidget(QWidget *parent, const char *name,
 //perform all cleanup that requires the kernel in destruct()
 KMMainWidget::~KMMainWidget()
 {
+  if ( QObject *shown = child( "folderBusyCursor", 0, false ) ) {
+    delete shown;
+    QApplication::restoreOverrideCursor();
+  }
   s_mainWidgetList->remove( this );
   destruct();
 }
@@ -1961,21 +1968,36 @@ void KMMainWidget::folderSelected()
 //-----------------------------------------------------------------------------
 void KMMainWidget::folderSelected( KMFolder* aFolder, bool forceJumpToUnread )
 {
-  // Busy only while there is work here.  An online IMAP folder that isn't
-  // complete yet is only requested; it comes back through folderSelected()
-  // when it is, and a busy cursor for the request as well made the cursor
-  // flicker (busy, normal while the server answers, busy again).
+  // The busy cursor only when the user waits: for an online IMAP folder that
+  // isn't complete yet, when it hasn't come within FolderBusyDelay ms (it
+  // comes back through folderSelected()).  It stays on until the work done
+  // here for it is over.  The work here itself is synchronous and short: a
+  // busy cursor for it only flickered.
   const bool onlyRequest = aFolder && aFolder->folderType() == KMFolderTypeImap
       && (KMFolder*)mFolder != aFolder && !aFolder->noContent() && !kmkernel->isOffline();
-  struct BusyCursor {
-    const bool on;
-    BusyCursor( bool on_ ) : on( on_ ) {
-      if ( on ) QApplication::setOverrideCursor( QCursor( QCursor::WaitCursor ) );
+  // (a child, not a member: the layout of the class stays as it was)
+  QTimer *busyTimer = static_cast<QTimer*>( child( "folderBusyTimer", "QTimer", false ) );
+  if ( !busyTimer ) {
+    busyTimer = new QTimer( this, "folderBusyTimer" );
+    connect( busyTimer, SIGNAL( timeout() ), SLOT( slotFolderBusyCursor() ) );
+  }
+  busyTimer->stop();
+  struct WaitOver {
+    QObject *shown;
+    WaitOver( QObject *s ) : shown( s ) {}
+    ~WaitOver() {
+      if ( shown ) {
+        delete shown;
+        QApplication::restoreOverrideCursor();
+      }
     }
-    ~BusyCursor() {
-      if ( on ) QApplication::restoreOverrideCursor();
-    }
-  } busy( !onlyRequest );
+  } waitOver( child( "folderBusyCursor", 0, false ) );
+  if ( onlyRequest ) {
+    if ( waitOver.shown )
+      waitOver.shown = 0; // still waiting, now for this folder: it stays
+    else
+      busyTimer->start( FolderBusyDelay, true );
+  }
 
   if (mMsgView)
     mMsgView->clear(true);
@@ -2081,6 +2103,15 @@ void KMMainWidget::folderSelected( KMFolder* aFolder, bool forceJumpToUnread )
   updateFolderMenu();
   if (!aFolder)
     slotIntro();
+}
+
+//-----------------------------------------------------------------------------
+void KMMainWidget::slotFolderBusyCursor()
+{
+  if ( child( "folderBusyCursor", 0, false ) )
+    return;
+  QApplication::setOverrideCursor( QCursor( QCursor::WaitCursor ) );
+  new QObject( this, "folderBusyCursor" ); // restored by folderSelected()
 }
 
 //-----------------------------------------------------------------------------
