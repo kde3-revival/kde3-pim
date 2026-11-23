@@ -26,6 +26,7 @@
 
 #include <qstringlist.h>
 #include <qvaluelist.h>
+#include <qmap.h>
 #include <qptrlist.h>
 #include <qasciidict.h>
 
@@ -457,6 +458,10 @@ protected:
 
   /** @brief the results from list/lsub/listrights commands */
   QValueList < imapList > listResponses;
+
+  /** @brief the boxes a LIST of the box itself returned on this connection,
+      by name; forgotten when a box is created, deleted or renamed */
+  QMap < QString, imapList > listedBoxes;
 
   /** @brief queues handling the running commands */
   QPtrList < imapCommand > sentQueue;  // no autodelete

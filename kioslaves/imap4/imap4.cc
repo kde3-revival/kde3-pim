@@ -2088,6 +2088,7 @@ void IMAP4Protocol::closeConnection()
   sentQueue.clear();
   lastHandled = 0;
   currentBox = QString::null;
+  listedBoxes.clear();
   readBufferLen = 0;
 }
 
@@ -2550,6 +2551,20 @@ IMAP4Protocol::doListEntry (const KURL & _url, const QString & myBox,
   }
 }
 
+// The type of a box from its LIST response; sets the delimiter if the
+// response has one.
+static enum IMAP_TYPE
+typeOfListedBox (const imapList & item, QString & delimiter)
+{
+  if ( !item.hierarchyDelimiter().isEmpty() )
+    delimiter = item.hierarchyDelimiter();
+  if (item.noSelect ())
+    return ITYPE_DIR;
+  if (item.noInferiors ())
+    return ITYPE_BOX;
+  return ITYPE_DIR_AND_BOX;
+}
+
 enum IMAP_TYPE
 IMAP4Protocol::parseURL (const KURL & _url, QString & _box,
                          QString & _section, QString & _type, QString & _uid,
@@ -2586,43 +2601,42 @@ IMAP4Protocol::parseURL (const KURL & _url, QString & _box,
           retVal = ITYPE_DIR_AND_BOX;
         } else
         {
-          // start a listing for the box to get the type
-          imapCommand *cmd;
-
-          cmd = doCommand (imapCommand::clientList ("", _box));
-          if (cmd->result () == "OK")
+          // start a listing for the box to get the type, unless the same
+          // listing on this connection found the box already: a round trip
+          // for every folder the application opens (see sendCommand() for
+          // when it is forgotten)
+          QMap < QString, imapList >::ConstIterator listed = listedBoxes.find (_box);
+          if (listed != listedBoxes.end ())
           {
-            for (QValueListIterator < imapList > it = listResponses.begin ();
-                it != listResponses.end (); ++it)
+            retVal = typeOfListedBox (*listed, _hierarchyDelimiter);
+          }
+          else
+          {
+            imapCommand *cmd;
+
+            cmd = doCommand (imapCommand::clientList ("", _box));
+            if (cmd->result () == "OK")
             {
-              //kdDebug(7116) << "IMAP4::parseURL - checking " << _box << " to " << (*it).name() << endl;
-              if (_box == (*it).name ())
+              for (QValueListIterator < imapList > it = listResponses.begin ();
+                  it != listResponses.end (); ++it)
               {
-                if ( !(*it).hierarchyDelimiter().isEmpty() )
-                  _hierarchyDelimiter = (*it).hierarchyDelimiter();
-                if ((*it).noSelect ())
+                //kdDebug(7116) << "IMAP4::parseURL - checking " << _box << " to " << (*it).name() << endl;
+                if (_box == (*it).name ())
                 {
-                  retVal = ITYPE_DIR;
-                }
-                else if ((*it).noInferiors ())
-                {
-                  retVal = ITYPE_BOX;
-                }
-                else
-                {
-                  retVal = ITYPE_DIR_AND_BOX;
+                  retVal = typeOfListedBox (*it, _hierarchyDelimiter);
+                  listedBoxes.replace (_box, *it);
                 }
               }
+              // if we got no list response for the box see if it's a prefix
+              if ( retVal == ITYPE_UNKNOWN &&
+                   namespaceToDelimiter.contains(_box) ) {
+                retVal = ITYPE_DIR;
+              }
+            } else {
+              kdDebug(7116) << "IMAP4::parseURL - got error for " << _box << endl;
             }
-            // if we got no list response for the box see if it's a prefix
-            if ( retVal == ITYPE_UNKNOWN &&
-                 namespaceToDelimiter.contains(_box) ) {
-              retVal = ITYPE_DIR;
-            }
-          } else {
-            kdDebug(7116) << "IMAP4::parseURL - got error for " << _box << endl;
+            completeQueue.removeRef (cmd);
           }
-          completeQueue.removeRef (cmd);
         } // cache
       }
       else // current == box
@@ -2780,6 +2794,8 @@ IMAP4Protocol::assureBox (const QString & aBox, bool readonly)
     bool ok = cmd->result() == "OK";
     QString cmdInfo = cmd->resultInfo();
     completeQueue.removeRef (cmd);
+    if (!ok)
+      listedBoxes.remove (aBox); // what it was may have changed
 
     if (!ok && getState() == ISTATE_NO)
     {

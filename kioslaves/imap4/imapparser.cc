@@ -141,6 +141,12 @@ imapParser::sendCommand (imapCommand * aCmd)
   {
     listResponses.clear ();
   }
+  else if (command == "CREATE"
+           || command == "DELETE"
+           || command == "RENAME")
+  {
+    listedBoxes.clear ();
+  }
   parseWriteLine (aCmd->getStr ());
   return aCmd;
 }
