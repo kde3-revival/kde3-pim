@@ -167,6 +167,7 @@ namespace KMail {
     // shown now: its links would be minted against the next message's
     // parts (an event loop can run while KMail writes it).
     mLoadTimer.stop();
+    mDeferredLoad = false;
     mPendingHtml = QString::null;
     mPendingBodies.clear();
     mPendingAttachmentList = QString::null;
