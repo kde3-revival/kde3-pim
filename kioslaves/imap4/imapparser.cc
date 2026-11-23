@@ -51,6 +51,7 @@ extern "C" {
 #include <qbuffer.h>
 #include <qstring.h>
 #include <qstringlist.h>
+#include <qmemarray.h>
 
 #include <kdebug.h>
 #include <kmdcodec.h>
@@ -718,33 +719,42 @@ void imapParser::parseList (parseString & result)
 }
 
 // Whether a LIST mailbox pattern covers a name (RFC 3501 6.3.8): '*'
-// matches any characters, '%' any but the hierarchy delimiter.
-static bool listPatternCovers (const QString & pattern, uint p,
-                               const QString & name, uint n,
+// matches any characters, '%' any but the hierarchy delimiter (a NIL
+// delimiter: any).  Dynamic programming over the pattern from its end, one
+// row of the name at a time: time pattern x name, no backtracking (a
+// recursive match takes exponential time on patterns like "*a*a*a...b").
+// covers[n]: the rest of the pattern from the current position matches
+// name[n..]; a '%' at n consumes name[n] only if no delimiter starts there.
+static bool listPatternCovers (const QString & pattern, const QString & name,
                                const QString & delimiter)
 {
-  while (p < pattern.length ())
+  const uint len = name.length ();
+  QMemArray < bool > atDelimiter (len);
+  for (uint n = 0; n < len; ++n)
+    atDelimiter[n] = !delimiter.isEmpty ()
+      && name.mid (n, delimiter.length ()) == delimiter;
+
+  QMemArray < bool > covers (len + 1);
+  covers.fill (false);
+  covers[len] = true;   // the empty pattern covers the empty rest
+  for (uint p = pattern.length (); p-- > 0; )
   {
     const QChar c = pattern[p];
     if (c == '*' || c == '%')
     {
-      for (uint k = n; ; ++k)
-      {
-        if (listPatternCovers (pattern, p + 1, name, k, delimiter))
-          return true;
-        if (k >= name.length ())
-          return false;
-        if (c == '%' && !delimiter.isEmpty ()
-            && name.mid (k, delimiter.length ()) == delimiter)
-          return false;
-      }
+      // covers[n] = rest[n] || (consumable name[n] && covers[n + 1])
+      for (uint n = len; n-- > 0; )
+        covers[n] = covers[n]
+          || ((c == '*' || !atDelimiter[n]) && covers[n + 1]);
     }
-    if (n >= name.length () || name[n] != c)
-      return false;
-    ++p;
-    ++n;
+    else
+    {
+      for (uint n = 0; n < len; ++n)
+        covers[n] = name[n] == c && covers[n + 1];
+      covers[len] = false;
+    }
   }
-  return n == name.length ();
+  return covers[0];
 }
 
 // INBOX is the same name in any case (RFC 3501 5.1); LIST matches it as
@@ -777,7 +787,7 @@ void imapParser::forgetUnlisted (const QString & parameter)
        it != listedBoxes.end (); ++it)
   {
     const QString name = listName (it.key ());
-    if (!listPatternCovers (pattern, 0, name, 0, (*it).hierarchyDelimiter ()))
+    if (!listPatternCovers (pattern, name, (*it).hierarchyDelimiter ()))
       continue;
     bool returned = false;
     for (QValueListConstIterator < imapList > r = listResponses.begin ();
