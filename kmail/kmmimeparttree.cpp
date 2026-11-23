@@ -205,10 +205,8 @@ void KMMimePartTree::slotSaveAll()
         return;
 
     mReaderWin->setUpdateAttachment();
-    KMSaveAttachmentsCommand *command =
+    KMCommand *command =
       new KMSaveAttachmentsCommand( this, mReaderWin->message() );
-    if ( mReaderWin->message() )
-      command->setEmbeddedResources( mReaderWin->message()->getMsgSerNum(), mReaderWin->embeddedResources() );
     command->start();
 }
 

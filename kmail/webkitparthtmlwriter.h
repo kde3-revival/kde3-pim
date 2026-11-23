@@ -54,8 +54,8 @@ namespace KMail {
    * The HTML parts of a message (queueIsolatedHtml()) become documents
    * of their own, shown in sandboxed frames of KMail's document: their
    * styles cannot change KMail's headers and attachment list, nor the
-   * other way round.  Their cid: references become data: URLs of the
-   * parts embedPart() names.  Images KMail's document takes from KMail's
+   * other way round.  Their cid: references are data: URLs already
+   * (ObjectTreeParser).  Images KMail's document takes from KMail's
    * temporary files (file: URLs) are linked into the message's
    * directory; the part serves nothing else, apart from KDE's icons.
    *
@@ -107,20 +107,17 @@ namespace KMail {
     bool eventFilter( QObject * o, QEvent * e );
     QString messageDirectory();
     QString linkIntoMessage( const QString & dir, const QString & path, int index );
-    QString resolveCidUrls( const QString & html ) const;
 
     QGuardedPtr<KParts::ReadOnlyPart> mPart;
     QString mCss;
     QString mHtml;
     QStringList mBodies;
-    QMap<QString, QString> mEmbeddedParts;   // Content-ID -> URL
     QString mAttachmentList;
     bool mBlank;
 
     // the document waiting to be shown
     QString mPendingCss, mPendingHtml, mPendingAttachmentList;
     QStringList mPendingBodies;
-    QMap<QString, QString> mPendingEmbeddedParts;
     QTimer mLoadTimer;
 
     QString mRoot;          // our private directory
@@ -129,6 +126,7 @@ namespace KMail {
     QString mLinkSecret;
     QMap<QString, QString> mLinks;   // kmail-link: URL -> original href
     QGuardedPtr<QWidget> mCover;   // over the part's widget, see clearView()
+    bool mCovered;          // the cover is up (whatever the widgets' visibility)
     bool mLoadedAfterCover;
     QTimer mUncoverTimer;
     bool mStats;

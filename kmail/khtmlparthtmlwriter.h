@@ -64,8 +64,6 @@ namespace KMail {
     void slotWriteNextHtmlChunk();
 
   private:
-    void resolveCidUrls();
-    QString resolveCidUrls( const QString & html ) const;
 
   private:
     KHTMLPart * mHtmlPart;
@@ -76,7 +74,6 @@ namespace KMail {
       Queued,
       Ended
     } mState;
-    EmbeddedPartMap mEmbeddedPartMap;
   };
 
 } // namespace KMail

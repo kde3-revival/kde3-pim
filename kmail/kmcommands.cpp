@@ -2424,18 +2424,18 @@ KMCommand::Result KMUrlClickedCommand::execute()
 }
 
 KMSaveAttachmentsCommand::KMSaveAttachmentsCommand( QWidget *parent, KMMessage *msg )
-  : KMCommand( parent, msg ), mImplicitAttachments( true ), mEncoded( false ), mEmbeddedSerNum( 0 )
+  : KMCommand( parent, msg ), mImplicitAttachments( true ), mEncoded( false )
 {
 }
 
 KMSaveAttachmentsCommand::KMSaveAttachmentsCommand( QWidget *parent, const QPtrList<KMMsgBase>& msgs )
-  : KMCommand( parent, msgs ), mImplicitAttachments( true ), mEncoded( false ), mEmbeddedSerNum( 0 )
+  : KMCommand( parent, msgs ), mImplicitAttachments( true ), mEncoded( false )
 {
 }
 
 KMSaveAttachmentsCommand::KMSaveAttachmentsCommand( QWidget *parent, QPtrList<partNode>& attachments,
                                                     KMMessage *msg, bool encoded )
-  : KMCommand( parent ), mImplicitAttachments( false ), mEncoded( encoded ), mEmbeddedSerNum( 0 )
+  : KMCommand( parent ), mImplicitAttachments( false ), mEncoded( encoded )
 {
   for ( QPtrListIterator<partNode> it( attachments ); it.current(); ++it ) {
     mAttachmentMap.insert( it.current(), msg );
@@ -2471,23 +2471,6 @@ KMCommand::Result KMSaveAttachmentsCommand::execute()
   return OK;
 }
 
-void KMSaveAttachmentsCommand::setEmbeddedResources( Q_UINT32 serNum, const QMap<int, QString> & resources )
-{
-  mEmbeddedSerNum = serNum;
-  mEmbeddedResources = resources;
-}
-
-// A part the reader shows in the HTML of this message (by node id; the
-// Content-ID must match too: the reader's tree can have parts inserted,
-// decrypted ones).
-bool KMSaveAttachmentsCommand::isEmbeddedResource( partNode * node, KMMessage * msg ) const
-{
-  if ( !msg || mEmbeddedSerNum == 0 || msg->getMsgSerNum() != mEmbeddedSerNum )
-    return false;
-  QMap<int, QString>::ConstIterator it = mEmbeddedResources.find( node->nodeId() );
-  return it != mEmbeddedResources.end() && !it.data().isEmpty() && it.data() == node->contentIdNoBrackets();
-}
-
 void KMSaveAttachmentsCommand::slotSaveAll()
 {
   // now that all message parts have been retrieved, remove all parts which
@@ -2498,12 +2481,10 @@ void KMSaveAttachmentsCommand::slotSaveAll()
           it != mAttachmentMap.end(); ) {
       // only body parts which have a filename or a name parameter (except for
       // the root node for which name is set to the message's subject) are
-      // considered attachments; not the images the HTML of a
-      // multipart/related shows (its resources)
-      if ( ( it.key()->msgPart().fileName().stripWhiteSpace().isEmpty() &&
-             ( it.key()->msgPart().name().stripWhiteSpace().isEmpty() ||
-               !it.key()->parentNode() ) ) ||
-           isEmbeddedResource( it.key(), it.data() ) ) {
+      // considered attachments
+      if ( it.key()->msgPart().fileName().stripWhiteSpace().isEmpty() &&
+           ( it.key()->msgPart().name().stripWhiteSpace().isEmpty() ||
+             !it.key()->parentNode() ) ) {
         PartNodeMessageMap::iterator delIt = it;
         ++it;
         mAttachmentMap.remove( delIt );

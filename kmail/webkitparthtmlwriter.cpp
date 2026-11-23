@@ -111,7 +111,7 @@ namespace KMail {
   WebKitPartHtmlWriter::WebKitPartHtmlWriter( KParts::ReadOnlyPart * part, QObject * parent, const char * name )
     : QObject( parent, name ), HtmlWriter(), mPart( part ), mBlank( false ),
       mLoadTimer( 0, "mLoadTimer" ), mSerial( 0 ),
-      mLoadedAfterCover( false ), mUncoverTimer( 0, "mUncoverTimer" ),
+      mCovered( false ), mLoadedAfterCover( false ), mUncoverTimer( 0, "mUncoverTimer" ),
       mStats( getenv( "KMAIL_WEBKIT_STATS" ) != 0 ), mEndTime( 0 )
   {
     connect( &mLoadTimer, SIGNAL(timeout()), SLOT(slotLoad()) );
@@ -131,7 +131,6 @@ namespace KMail {
     mCss = css;
     mHtml = QString::null;
     mBodies.clear();
-    mEmbeddedParts.clear();
     mAttachmentList = QString::null;
     mBlank = false;
     forgetLinks();
@@ -143,7 +142,6 @@ namespace KMail {
     mPendingCss = mCss;
     mPendingHtml = mHtml;
     mPendingBodies = mBodies;
-    mPendingEmbeddedParts = mEmbeddedParts;
     mPendingAttachmentList = mAttachmentList;
     mHtml = QString::null;
     mBodies.clear();
@@ -199,9 +197,11 @@ namespace KMail {
     end();
   }
 
-  void WebKitPartHtmlWriter::embedPart( const QCString & contentId, const QString & url ) {
-    mEmbeddedParts[QString( contentId )] = url;
+  // cid: URLs are resolved by ObjectTreeParser (embedRelatedResources():
+  // data: URLs), within the scope of the HTML part: no document-wide map.
+  void WebKitPartHtmlWriter::embedPart( const QCString &, const QString & ) {
   }
+
 
   void WebKitPartHtmlWriter::queueIsolatedHtml( const QString & html ) {
     // The frame starts 1 pixel high; the part's script gives it the height
@@ -254,34 +254,6 @@ namespace KMail {
     return target;
   }
 
-  QString WebKitPartHtmlWriter::resolveCidUrls( const QString & html ) const {
-    // Only in attribute values and url(), as KHTML's writer: not in the
-    // text of a message ("cid:..." written in it).
-    QRegExp cid( "([\"'(=]\\s*)cid:([^\"'\\s>)]+)", false );
-    QString result;
-    int last = 0;
-    for ( int pos = cid.search( html ); pos >= 0; pos = cid.search( html, pos + cid.matchedLength() ) ) {
-      QString id = KURL::decode_string( cid.cap( 2 ) );
-      QMap<QString, QString>::ConstIterator it = mPendingEmbeddedParts.find( id );
-      if ( it == mPendingEmbeddedParts.end() )
-        continue;
-      QString path = KURL( it.data() ).path();
-      QFile f( path );
-      if ( !f.open( IO_ReadOnly ) )
-        continue;
-      QByteArray data = f.readAll();
-      QString type = KMimeType::findByPath( path, 0, true )->name();
-      if ( !type.startsWith( "image/" ) )
-        // An image without a file name ("unnamed"): its content says.
-        // The part takes data: images as image/* only.
-        type = KMimeType::findByContent( data )->name();
-      result += html.mid( last, pos - last ) + cid.cap( 1 );
-      result += "data:" + type + ";base64," + QString::fromLatin1( KCodecs::base64Encode( data ) );
-      last = pos + cid.matchedLength();
-    }
-    return result + html.mid( last );
-  }
-
   void WebKitPartHtmlWriter::slotLoad() {
     if ( !mPart )
       return;
@@ -291,7 +263,7 @@ namespace KMail {
       return;
 
     for ( unsigned i = 0; i < mPendingBodies.count(); ++i )
-      writeFile( dir + QString::fromLatin1( "/body-%1.html" ).arg( i ), resolveCidUrls( mPendingBodies[i] ) );
+      writeFile( dir + QString::fromLatin1( "/body-%1.html" ).arg( i ), mPendingBodies[i] );
 
     QString html = mPendingHtml;
     if ( !mPendingAttachmentList.isEmpty() )
@@ -359,7 +331,7 @@ namespace KMail {
     if ( mStats )
       fprintf( stderr, "kmail-webkit: document %u: end() -> files written %lld ms (%lld ms writing)\n",
                mSerial, nowMs() - mEndTime, nowMs() - start );
-    if ( mCover && mCover->isVisible() ) {
+    if ( mCovered ) {
       // the document of the cover's generation: the cover goes when it
       // (or a later one) has completed, not when an earlier one did
       mLoadedAfterCover = true;
@@ -381,7 +353,7 @@ namespace KMail {
     // longer, never the previous message after the cover.  The part does
     // not say when the new document is on screen; 80 ms was too short on a
     // loaded machine (the previous message for 150 ms after the cover).
-    if ( mCover && mCover->isVisible() && mLoadedAfterCover && !mLoadTimer.isActive() )
+    if ( mCovered && mLoadedAfterCover && !mLoadTimer.isActive() )
       mUncoverTimer.start( 250, true );
   }
 
@@ -400,13 +372,13 @@ namespace KMail {
     mLoadTimer.stop();
     mPendingHtml = QString::null;
     mPendingBodies.clear();
-    mPendingEmbeddedParts.clear();
     // The X server fills the window with its background colour when it
     // is mapped: blank at once, before KMail prepares the next message.
     mCover->setPaletteBackgroundColor( background );
     mCover->setGeometry( view->rect() );
     mCover->raise();
     mCover->show();
+    mCovered = true;
     QApplication::flushX();
     if ( mStats )
       fprintf( stderr, "kmail-webkit: cleared\n" );
@@ -417,6 +389,7 @@ namespace KMail {
       return;   // a newer document follows: its completed() uncovers
     if ( mCover )
       mCover->hide();
+    mCovered = false;
     if ( mStats )
       fprintf( stderr, "kmail-webkit: document %u: end() -> uncovered %lld ms\n", mSerial, nowMs() - mEndTime );
   }

@@ -85,14 +85,20 @@ class KMReaderWin: public QWidget, public KMail::Interface::Observer {
   friend class KMail::KHtmlPartHtmlWriter;
 
 public:
-  /** A resource of a multipart/related HTML root, embedded into the
-      shown message under @p key (ObjectTreeParser): not an attachment of
-      the message shown (attachment list, "save all attachments"). */
-  void addEmbeddedResource( partNode * node, const QString & key );
-  /** The key @p node was embedded under, or QString::null. */
-  QString embeddedResourceKey( partNode * node ) const;
-  /** The embedded resources of the message shown: node id -> Content-ID. */
-  QMap<int, QString> embeddedResources() const { return mEmbeddedResourceIds; }
+  /** Writes @p msgPart to a temporary file (removed with the message
+      shown); its name, or QString::null. */
+  QString writeMessagePartToTempFile( KMMessagePart* msgPart, int partNumber );
+
+  /** The images ObjectTreeParser embedded into the HTML shown (by
+      Content-ID): the URL each is shown with; QString::null if none. */
+  QString embeddedResourceURL( partNode * node ) const;
+  void addEmbeddedResource( partNode * node, const QString & url );
+  /** A resource of a multipart/related root, shown in it: not in the
+      attachment list. */
+  void setResourceHidden( partNode * node ) { mHiddenResources[node] = true; }
+  /** @p bytes more of embedded URLs for the message shown; false (and
+      not counted) beyond the bound (data: URLs are copies). */
+  bool useEmbeddedBytes( unsigned int bytes );
 
   KMReaderWin( QWidget *parent,
 	       QWidget *mainWindow,
@@ -453,7 +459,6 @@ protected:
   /** Writes the given message part to a temporary file and returns the
       name of this file or QString::null if writing failed.
   */
-  QString writeMessagePartToTempFile( KMMessagePart* msgPart, int partNumber );
 
 
   /**
@@ -508,8 +513,11 @@ private:
   bool mHtmlMail, mHtmlLoadExternal, mHtmlOverride, mHtmlLoadExtOverride;
   int mAtmCurrent;
   QString mAtmCurrentName;
-  QMap<partNode *, QString> mEmbeddedResourceKeys;
-  QMap<int, QString> mEmbeddedResourceIds;
+  // the message shown (cleared with every parse and message change)
+  QMap<partNode *, QString> mEmbeddedResources;
+  QMap<partNode *, bool> mHiddenResources;
+  unsigned int mEmbeddedBytes;
+  void forgetEmbeddedResources();
   KMMessage *mMessage;
   // widgets:
   QSplitter * mSplitter;

@@ -34,16 +34,9 @@
 #include "khtmlparthtmlwriter.h"
 
 #include <kdebug.h>
-#include <kurl.h>
 #include <khtml_part.h>
 #include <khtmlview.h>
 
-#include <dom/dom_string.h>
-#include <dom/html_document.h>
-#include <dom/html_image.h>
-#include <dom/html_misc.h>
-
-#include <qregexp.h>
 
 #include <cassert>
 
@@ -68,7 +61,6 @@ namespace KMail {
       reset();
     }
 
-    mEmbeddedPartMap.clear();
 
     // clear the widget:
     mHtmlPart->view()->setUpdatesEnabled( false );
@@ -85,7 +77,6 @@ namespace KMail {
     kdWarning( mState != Begun, 5006 ) << "KHtmlPartHtmlWriter: end() called on non-begun or queued session!" << endl;
     mHtmlPart->end();
 
-    resolveCidUrls();
 
     mHtmlPart->view()->viewport()->setUpdatesEnabled( true );
     mHtmlPart->view()->setUpdatesEnabled( true );
@@ -105,11 +96,10 @@ namespace KMail {
 
   void KHtmlPartHtmlWriter::write( const QString & str ) {
     kdWarning( mState != Begun, 5006 ) << "KHtmlPartHtmlWriter: write() called in Ended or Queued state!" << endl;
-    mHtmlPart->write( resolveCidUrls( str ) );
+    mHtmlPart->write( str );
   }
 
-  void KHtmlPartHtmlWriter::queue( const QString & s ) {
-    const QString str = resolveCidUrls( s );
+  void KHtmlPartHtmlWriter::queue( const QString & str ) {
     static const uint chunksize = 16384;
     for ( uint pos = 0 ; pos < str.length() ; pos += chunksize )
       mHtmlQueue.push_back( str.mid( pos, chunksize ) );
@@ -131,47 +121,9 @@ namespace KMail {
     }
   }
 
-  void KHtmlPartHtmlWriter::embedPart( const QCString & contentId,
-                                       const QString & contentURL ) {
-    mEmbeddedPartMap[QString(contentId)] = contentURL;
-  }
-
-  // The cid: URLs of the parts known when the HTML is written (the
-  // resources of a multipart/related root are known before the root):
-  // also those of style sheets and background attributes, which the
-  // DOM pass at end() does not see.  Only in attribute values and url():
-  // not in text KMail writes (a subject).
-  QString KHtmlPartHtmlWriter::resolveCidUrls( const QString & html ) const {
-    if ( mEmbeddedPartMap.isEmpty() || html.find( "cid:", 0, false ) < 0 )
-      return html;
-    QRegExp cid( "([\"'(=]\\s*)cid:([^\"'\\s>)]+)", false );
-    QString result;
-    int last = 0;
-    for ( int pos = cid.search( html ); pos >= 0; pos = cid.search( html, pos + cid.matchedLength() ) ) {
-      EmbeddedPartMap::const_iterator it = mEmbeddedPartMap.find( KURL::decode_string( cid.cap( 2 ) ) );
-      if ( it == mEmbeddedPartMap.end() )
-        continue;
-      result += html.mid( last, pos - last ) + cid.cap( 1 ) + it.data();
-      last = pos + cid.matchedLength();
-    }
-    return result + html.mid( last );
-  }
-
-  void KHtmlPartHtmlWriter::resolveCidUrls()
-  {
-    DOM::HTMLDocument document = mHtmlPart->htmlDocument();
-    DOM::HTMLCollection images = document.images();
-    for ( DOM::Node node = images.firstItem(); !node.isNull(); node = images.nextItem() ) {
-      DOM::HTMLImageElement image( node );
-      KURL url( image.src().string() );
-      if ( url.protocol() == "cid" ) {
-        EmbeddedPartMap::const_iterator it = mEmbeddedPartMap.find( url.path() );
-        if ( it != mEmbeddedPartMap.end() ) {
-          kdDebug(5006) << "Replacing " << url.prettyURL() << " by " << it.data() << endl;
-          image.setSrc( it.data() );
-        }
-      }
-    }
+  // cid: URLs are resolved by ObjectTreeParser (embedRelatedResources()),
+  // within the scope of the HTML part: no document-wide map here.
+  void KHtmlPartHtmlWriter::embedPart( const QCString &, const QString & ) {
   }
 
 } // namespace KMail

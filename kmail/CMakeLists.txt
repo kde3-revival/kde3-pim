@@ -125,6 +125,7 @@ kde3_add_library(kmailprivate SHARED
     teehtmlwriter.cpp
     mailcomposerIface.skel
     objecttreeparser.cpp
+    cidrewriter.cpp
     attachmentcollector.cpp
     bodypartformatter.cpp
     bodypartformatterfactory.cpp

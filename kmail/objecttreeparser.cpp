@@ -46,6 +46,7 @@
 #include "interfaces/htmlwriter.h"
 #include "htmlstatusbar.h"
 #include "csshelper.h"
+#include "cidrewriter.h"
 #include "bodypartformatter.h"
 #include "bodypartformatterfactory.h"
 #include "partnodebodypart.h"
@@ -1119,209 +1120,122 @@ namespace KMail {
   }
 
   namespace {
-    struct CidReference {
-      int pos, len;   // of the URL ("cid:...") in the HTML
-      QString id;     // the Content-ID it names (%-decoded)
+    // The images a shown HTML part can use by Content-ID: the parts of
+    // its scope (see embedRelatedResources()).
+    class ScopeResolver : public CidResolver {
+    public:
+      ScopeResolver( KMReaderWin * reader, bool isolated, bool resources )
+        : mReader( reader ), mIsolated( isolated ), mResources( resources ) {}
+
+      QMap<QString, partNode *> byId;
+      QMap<QString, bool> ambiguous;
+
+      QString urlFor( const QString & id ) {
+        QMap<QString, partNode *>::ConstIterator it = byId.find( id );
+        if ( it == byId.end() || ambiguous.contains( id ) )
+          return QString::null;
+        partNode * part = it.data();
+        QString url = mReader->embeddedResourceURL( part );
+        if ( url.isEmpty() ) {
+          url = makeURL( part );
+          if ( url.isEmpty() )
+            return QString::null;   // stays an attachment
+          mReader->addEmbeddedResource( part, url );
+        }
+        // data: URLs are copies: a bound for the whole message (one image
+        // referenced a million times)
+        if ( !mReader->useEmbeddedBytes( url.length() ) )
+          return QString::null;
+        // A resource of the related root, shown: not an attachment.  (In
+        // a multipart/mixed, cid: references of an HTML part are resolved
+        // as KMail always did, the parts stay attachments.)
+        if ( mResources && !part->processed() ) {
+          part->setProcessed( true, false );
+          mReader->setResourceHidden( part );
+        }
+        return url;
+      }
+
+    private:
+      // What the writer shows the image with: WebKit (an isolated HTML
+      // document, the part's mail mode takes data: images only) a data:
+      // URL, KHTML the temporary file.  Images only (not SVG: a document
+      // of its own), loaded ones.
+      QString makeURL( partNode * part ) {
+        if ( part->type() != DwMime::kTypeImage || !part->msgPart().isComplete() )
+          return QString::null;
+        const QString subtype = QString::fromLatin1( part->msgPart().subtypeStr() ).lower();
+        if ( subtype.isEmpty() || subtype.contains( "svg" ) || subtype.contains( QRegExp( "[^a-z0-9.+-]" ) ) )
+          return QString::null;
+        if ( mIsolated ) {
+          const QByteArray data = part->msgPart().bodyDecodedBinary();
+          if ( data.isEmpty() )
+            return QString::null;
+          return "data:image/" + subtype + ";base64," + QString::fromLatin1( KCodecs::base64Encode( data ) );
+        }
+        const QString fileName = mReader->writeMessagePartToTempFile( &part->msgPart(), part->nodeId() );
+        return fileName.isEmpty() ? QString::null : "file:" + KURL::encode_string( fileName );
+      }
+
+      KMReaderWin * mReader;
+      bool mIsolated, mResources;
     };
-
-    bool startsWithAt( const QString & s, int pos, const char * what ) {
-      const int n = qstrlen( what );
-      return pos + n <= (int)s.length() && s.mid( pos, n ).lower() == QString::fromLatin1( what );
-    }
-
-    void addIfCid( const QString & html, int pos, int len, QValueList<CidReference> & refs ) {
-      // the value as the browser takes it: surrounding white space ignored
-      while ( len > 0 && html[pos].isSpace() ) { ++pos; --len; }
-      while ( len > 0 && html[pos + len - 1].isSpace() ) --len;
-      if ( len <= 4 || !startsWithAt( html, pos, "cid:" ) )
-        return;
-      CidReference ref;
-      ref.pos = pos;
-      ref.len = len;
-      ref.id = KURL::decode_string( html.mid( pos + 4, len - 4 ) );
-      refs.append( ref );
-    }
-
-    // url(...) of CSS text in html[from, to): style sheets, style="".
-    void scanCss( const QString & html, int from, int to, QValueList<CidReference> & refs ) {
-      for ( int i = from; i < to; ) {
-        if ( startsWithAt( html, i, "/*" ) ) {
-          const int e = html.find( "*/", i + 2 );
-          i = ( e < 0 || e >= to ) ? to : e + 2;
-        } else if ( startsWithAt( html, i, "url(" ) ) {
-          i += 4;
-          while ( i < to && html[i].isSpace() ) ++i;
-          QChar quote;
-          if ( i < to && ( html[i] == '"' || html[i] == '\'' ) )
-            quote = html[i++];
-          int e = i;
-          while ( e < to && ( quote.isNull() ? html[e] != ')' : html[e] != quote ) )
-            ++e;
-          addIfCid( html, i, e - i, refs );
-          i = e + 1;
-        } else
-          ++i;
-      }
-    }
-
-    // The cid: URLs the HTML really uses to show something: <img src>,
-    // background="" of any element, url() of style sheets and style="".
-    // Not those of comments, text, links, scripts or <link>ed style sheets
-    // (parts of their own, which neither writer rewrites).  A tokenizer
-    // after HTML's rules for what matters here (comments, raw text
-    // elements, attribute quoting), not a search in the text.
-    QValueList<CidReference> cidReferences( const QString & html ) {
-      QValueList<CidReference> refs;
-      const int n = html.length();
-      int i = 0;
-      while ( i < n ) {
-        const int lt = html.find( '<', i );
-        if ( lt < 0 )
-          break;
-        i = lt + 1;
-        if ( startsWithAt( html, lt, "<!--" ) ) {
-          const int e = html.find( "-->", lt + 4 );
-          i = e < 0 ? n : e + 3;
-          continue;
-        }
-        if ( i < n && ( html[i] == '!' || html[i] == '?' || html[i] == '/' ) ) {
-          const int e = html.find( '>', i );
-          i = e < 0 ? n : e + 1;
-          continue;
-        }
-        if ( i >= n || !html[i].isLetter() )
-          continue;
-        int e = i;
-        while ( e < n && !html[e].isSpace() && html[e] != '/' && html[e] != '>' )
-          ++e;
-        const QString tag = html.mid( i, e - i ).lower();
-        i = e;
-        // attributes
-        while ( i < n && html[i] != '>' ) {
-          if ( html[i].isSpace() || html[i] == '/' ) { ++i; continue; }
-          int ns = i;
-          while ( i < n && !html[i].isSpace() && html[i] != '/' && html[i] != '>' && html[i] != '=' )
-            ++i;
-          const QString name = html.mid( ns, i - ns ).lower();
-          while ( i < n && html[i].isSpace() ) ++i;
-          if ( i >= n || html[i] != '=' )
-            continue;
-          ++i;
-          while ( i < n && html[i].isSpace() ) ++i;
-          int vs, ve;
-          if ( i < n && ( html[i] == '"' || html[i] == '\'' ) ) {
-            const QChar q = html[i];
-            vs = i + 1;
-            ve = html.find( q, vs );
-            if ( ve < 0 ) ve = n;
-            i = ve + 1;
-          } else {
-            vs = i;
-            while ( i < n && !html[i].isSpace() && html[i] != '>' ) ++i;
-            ve = i;
-          }
-          if ( ( name == "src" && tag == "img" ) || name == "background" )
-            addIfCid( html, vs, ve - vs, refs );
-          else if ( name == "style" )
-            scanCss( html, vs, ve, refs );
-        }
-        ++i;   // '>'
-        // raw text: no markup inside, up to the end tag
-        if ( tag == "plaintext" )
-          break;
-        if ( tag == "style" || tag == "script" || tag == "textarea" || tag == "title" || tag == "xmp"
-             || tag == "iframe" || tag == "noembed" || tag == "noframes" ) {
-          int end = i;
-          for ( ;; ) {
-            end = html.find( "</", end );
-            if ( end < 0 || startsWithAt( html, end + 2, tag.latin1() ) )
-              break;
-            end += 2;
-          }
-          if ( end < 0 ) end = n;
-          if ( tag == "style" )
-            scanCss( html, i, end, refs );
-          i = end;
-        }
-      }
-      return refs;
-    }
   }
 
-  // An HTML part shown as HTML: if it is (in) the root of a
-  // multipart/related, the parts of that related (only of that one) it
-  // shows by their Content-ID become its resources.  Each one gets a key of
-  // its own, which the HTML uses instead of the Content-ID: no other
-  // related, no other part with the same Content-ID, no text of the
-  // message can name it.  A Content-ID two parts share is nobody's: both
-  // stay attachments.  A part that cannot be embedded (not loaded, no
-  // temporary file) stays an attachment and its image stays broken.
+  // An HTML part shown as HTML.  Its scope: the nearest multipart/related
+  // above it whose root it is (or is in): the parts of that related (only
+  // of that one) it shows by their Content-ID become its resources, shown
+  // in place and not as attachments.  Without one, the nearest
+  // multipart/mixed: references to its parts are resolved, the parts stay
+  // attachments (as KMail always did).  The references are rewritten to
+  // the URLs the writer shows the images with (rewriteCidReferences()):
+  // no Content-ID is left for the writer to resolve, none can reach a part
+  // of another scope.  A Content-ID two parts of the scope share is
+  // nobody's; a part that cannot be embedded (not an image, not loaded, no
+  // temporary file) stays an attachment.
   QString ObjectTreeParser::embedRelatedResources( partNode * htmlNode, const QString & html ) {
-    if ( !mReader || !htmlWriter() )
+    if ( !mReader || !htmlWriter() || html.find( "cid:", 0, false ) < 0 )
       return html;
-    partNode * related = 0;
+    partNode * scope = 0;
+    partNode * scopeRoot = 0;
+    partNode * mixed = 0;
     for ( partNode * child = htmlNode, * p = htmlNode->parentNode(); p; child = p, p = p->parentNode() ) {
       if ( p->type() == DwMime::kTypeMessage )
         break;
-      if ( partNode * root = p->relatedRoot() ) {
-        if ( child == root )
-          related = p;
-        break;   // the nearest related only: its scope
+      if ( p->type() == DwMime::kTypeMultipart && p->subType() == DwMime::kSubtypeRelated ) {
+        partNode * root = p->relatedRoot();
+        if ( child == root ) {
+          scope = p;
+          scopeRoot = root;
+        }
+        break;   // the nearest related only
       }
+      if ( !mixed && p->type() == DwMime::kTypeMultipart && p->subType() == DwMime::kSubtypeMixed )
+        mixed = p;
     }
-    if ( !related )
+    const bool resources = scope != 0;
+    if ( !scope )
+      scope = mixed;
+    if ( !scope )
       return html;
 
-    QMap<QString, partNode *> byId;
-    QMap<QString, bool> ambiguous;
-    for ( partNode * child = related->firstChild(); child; child = child->nextSibling() ) {
-      if ( child == related->relatedRoot() || child->type() == DwMime::kTypeMultipart
-           || child->type() == DwMime::kTypeMessage )
-        continue;
+    ScopeResolver resolver( mReader, htmlWriter()->isolatesHtml(), resources );
+    for ( partNode * child = scope->firstChild(); child; child = child->nextSibling() ) {
       const QString id = child->contentIdNoBrackets();
       if ( id.isEmpty() )
         continue;
-      if ( byId.contains( id ) )
-        ambiguous[id] = true;
-      byId[id] = child;
+      if ( resolver.byId.contains( id ) )
+        resolver.ambiguous[id] = true;   // also against the root, a multipart
+      if ( child == scopeRoot || child == htmlNode || child->type() == DwMime::kTypeMultipart
+           || child->type() == DwMime::kTypeMessage )
+        resolver.byId[id] = 0;            // not an image to embed
+      else
+        resolver.byId[id] = child;
     }
-    if ( byId.isEmpty() )
-      return html;
-
-    const QValueList<CidReference> refs = cidReferences( html );
-    QString result;
-    int last = 0;
-    for ( QValueList<CidReference>::ConstIterator it = refs.begin(); it != refs.end(); ++it ) {
-      if ( !byId.contains( (*it).id ) || ambiguous.contains( (*it).id ) )
-        continue;
-      partNode * part = byId[(*it).id];
-      QString key = mReader->embeddedResourceKey( part );
-      if ( key.isEmpty() ) {
-        if ( part->processed() )
-          continue;   // shown as an attachment already
-        key = embedRelatedPart( part );
-        if ( key.isEmpty() )
-          continue;
-        part->setProcessed( true, false );
-      }
-      result += html.mid( last, (*it).pos - last ) + "cid:" + key;
-      last = (*it).pos + (*it).len;
-    }
-    return result + html.mid( last );
-  }
-
-  QString ObjectTreeParser::embedRelatedPart( partNode * node ) {
-    // Not loaded (yet): an attachment until it is.
-    if ( !node->msgPart().isComplete() )
-      return QString::null;
-    const QString fileName = mReader->writeMessagePartToTempFile( &node->msgPart(), node->nodeId() );
-    if ( fileName.isEmpty() )
-      return QString::null;
-    static const QString salt = QString::number( KApplication::random(), 36 );
-    const QString key = QString::fromLatin1( "kmail-resource-%1-%2" ).arg( salt ).arg( node->nodeId() );
-    htmlWriter()->embedPart( key.latin1(), "file:" + KURL::encode_string( fileName ) );
-    mReader->addEmbeddedResource( node, key );
-    return key;
+    for ( QMap<QString, partNode *>::Iterator it = resolver.byId.begin(); it != resolver.byId.end(); ++it )
+      if ( !it.data() )
+        resolver.ambiguous[it.key()] = true;
+    return rewriteCidReferences( html, resolver );
   }
 
   bool ObjectTreeParser::processMultiPartDigestSubtype( partNode * node, ProcessResult & result ) {

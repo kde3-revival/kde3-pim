@@ -1883,10 +1883,6 @@ void KMMainWidget::slotSaveAttachments()
     return;
   KMSaveAttachmentsCommand *saveCommand = new KMSaveAttachmentsCommand( this,
                                                                         *mHeaders->selectedMsgs() );
-  // The images the reader shows in the HTML of the message it shows are
-  // not attachments of it.
-  if ( mMsgView && mMsgView->message() )
-    saveCommand->setEmbeddedResources( mMsgView->message()->getMsgSerNum(), mMsgView->embeddedResources() );
   saveCommand->start();
 }
 

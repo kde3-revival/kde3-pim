@@ -553,6 +553,7 @@ KMReaderWin::KMReaderWin(QWidget *aParent,
   mLastSerNum = 0;
   mWaitingForSerNum = 0;
   mMessage = 0;
+  mEmbeddedBytes = 0;
   mLastStatus = KMMsgStatusUnknown;
   mMsgDisplay = true;
   mPrinting = false;
@@ -1258,6 +1259,9 @@ void KMReaderWin::setMsg(KMMessage* aMsg, bool force)
     if ( other )
       mWebWriter->clearView( mCSSHelper->backgroundColor() );
   }
+  // the images embedded into the previous message are not this one's
+  if ( aMsg ? aMsg->getMsgSerNum() != mLastSerNum || mLastSerNum == 0 : true )
+    forgetEmbeddedResources();
 
   // (de)register as observer
   if (aMsg && message())
@@ -1748,8 +1752,7 @@ void KMReaderWin::parseMsg(KMMessage* aMsg)
   htmlWriter()->queue( writeMsgHeader(aMsg, hasVCard, true ) );
 
   // show message content
-  mEmbeddedResourceKeys.clear();
-  mEmbeddedResourceIds.clear();
+  forgetEmbeddedResources();
   ObjectTreeParser otp( this );
   otp.parseObjectTree( mRootNode );
 
@@ -1872,16 +1875,31 @@ QString KMReaderWin::writeMsgHeader(KMMessage* aMsg, bool hasVCard, bool topLeve
 
 
 //-----------------------------------------------------------------------------
-void KMReaderWin::addEmbeddedResource( partNode * node, const QString & key )
+void KMReaderWin::addEmbeddedResource( partNode * node, const QString & url )
 {
-  mEmbeddedResourceKeys[node] = key;
-  mEmbeddedResourceIds[node->nodeId()] = node->contentIdNoBrackets();
+  mEmbeddedResources[node] = url;
 }
 
-QString KMReaderWin::embeddedResourceKey( partNode * node ) const
+QString KMReaderWin::embeddedResourceURL( partNode * node ) const
 {
-  QMap<partNode *, QString>::ConstIterator it = mEmbeddedResourceKeys.find( node );
-  return it == mEmbeddedResourceKeys.end() ? QString::null : it.data();
+  QMap<partNode *, QString>::ConstIterator it = mEmbeddedResources.find( node );
+  return it == mEmbeddedResources.end() ? QString::null : it.data();
+}
+
+bool KMReaderWin::useEmbeddedBytes( unsigned int bytes )
+{
+  static const unsigned int limit = 64 * 1024 * 1024;
+  if ( bytes > limit || mEmbeddedBytes > limit - bytes )
+    return false;
+  mEmbeddedBytes += bytes;
+  return true;
+}
+
+void KMReaderWin::forgetEmbeddedResources()
+{
+  mEmbeddedResources.clear();
+  mHiddenResources.clear();
+  mEmbeddedBytes = 0;
 }
 
 //-----------------------------------------------------------------------------
@@ -2842,8 +2860,6 @@ void KMReaderWin::slotSaveAttachments()
   mAtmUpdate = true;
   KMSaveAttachmentsCommand *saveCommand = new KMSaveAttachmentsCommand( mMainWindow,
                                                                         message() );
-  if ( message() )
-    saveCommand->setEmbeddedResources( message()->getMsgSerNum(), embeddedResources() );
   saveCommand->start();
 }
 
@@ -3039,7 +3055,7 @@ QString KMReaderWin::renderAttachments(partNode * node, const QColor &bgColor )
     }
     typeBlacklisted = typeBlacklisted || node == mRootNode;
     // An image the HTML of a multipart/related shows: not an attachment.
-    typeBlacklisted = typeBlacklisted || mEmbeddedResourceKeys.contains( node );
+    typeBlacklisted = typeBlacklisted || mHiddenResources.contains( node );
     if ( !label.isEmpty() && !icon.isEmpty() && !typeBlacklisted ) {
       html += "<div style=\"float:left;\">";
       html += QString::fromLatin1( "<span style=\"white-space:nowrap; border-width: 0px; border-left-width: 5px; border-color: %1; 2px; border-left-style: solid;\">" ).arg( bgColor.name() );
