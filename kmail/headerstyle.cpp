@@ -405,8 +405,9 @@ namespace KMail {
         meterBar.setPixel( i, 0, i+1 );
       }
     }
-    QString titleText = i18n("%1% probability of being spam.\n\nFull report:\n%2")
-                     .arg( QString::number( percent ), filterHeader );
+    // the spam filter's header comes with the message: text in an attribute
+    QString titleText = KMMessage::quoteHtmlChars( i18n("%1% probability of being spam.\n\nFull report:\n%2")
+                     .arg( QString::number( percent ), filterHeader ) );
     return QString("<img src=\"%1\" width=\"%2\" height=\"%3\" style=\"border: 1px solid black;\" title=\"%4\"> &nbsp;")
       .arg( imgToDataUrl( meterBar, "PPM" ), QString::number( 20 ),
             QString::number( 5 ), titleText );
@@ -827,7 +828,7 @@ namespace KMail {
 		"background-image: url("+imgpath+"shadow_right.png); width: 10px; min-height: 100%;\">&nbsp;</div>";
 
 	headerStr += ""
-	    "<div style=\"margin-left: 8px; top: 0px;\"><span style=\"font-size: 10px; font-weight: bold;\">"+dateString+"</span></div>"
+	    "<div style=\"margin-left: 8px; top: 0px;\"><span style=\"font-size: 10px; font-weight: bold;\">"+strToHtml( dateString )+"</span></div>"
 	    // #0057ae
 	    "<table style=\"background: "+activeColorDark.name()+"; border-collapse:collapse; top: 14px; min-width: 200px; \" cellpadding=0> \n"
 	    "  <tr> \n"
@@ -845,7 +846,7 @@ namespace KMail {
 	    headerStr +=
 		"     <tr> \n"
 		"      <td style=\"font-size: 6px; text-align: right; padding-left: 5px; padding-right: 24px; "+borderSettings+"\"></td> \n"
-		"      <td style=\"font-weight: bolder; font-size: 120%;"+borderSettings+"\">"+message->subject()+"</td> \n"
+		"      <td style=\"font-weight: bolder; font-size: 120%;"+borderSettings+"\">"+strToHtml( message->subject() )+"</td> \n"
 		"     </tr> \n";
 	}
 

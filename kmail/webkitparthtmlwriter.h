@@ -85,8 +85,8 @@ namespace KMail {
     /** HTML for KMail's \<div id="attachmentInjectionPoint"\>. */
     void setAttachmentList( const QString & html ) { mAttachmentList = html; }
 
-    /** The URL of KMail's document a link of the part stands for (see
-        slotLoad()): @p url itself for any other URL. */
+    /** The URL of KMail's document a kmail-link: URL of the document
+        shown stands for (see slotLoad()); QString::null for any other. */
     QString originalURL( const QString & url ) const;
 
   private slots:
@@ -94,6 +94,7 @@ namespace KMail {
     void slotCompleted();
 
   private:
+    void forgetLinks();
     QString messageDirectory();
     QString linkIntoMessage( const QString & dir, const QString & path, int index );
     QString resolveCidUrls( const QString & html ) const;

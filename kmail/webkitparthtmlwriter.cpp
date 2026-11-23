@@ -34,7 +34,6 @@
 
 #include "webkitparthtmlwriter.h"
 
-#include <kapplication.h>
 #include <kdebug.h>
 #include <kglobal.h>
 #include <kmdcodec.h>
@@ -113,7 +112,6 @@ namespace KMail {
       mLoadTimer( 0, "mLoadTimer" ), mSerial( 0 ),
       mStats( getenv( "KMAIL_WEBKIT_STATS" ) != 0 ), mEndTime( 0 )
   {
-    mLinkSecret = QString::number( KApplication::random(), 36 ) + QString::number( KApplication::random(), 36 );
     connect( &mLoadTimer, SIGNAL(timeout()), SLOT(slotLoad()) );
     if ( part )
       connect( part, SIGNAL(completed()), SLOT(slotCompleted()) );
@@ -133,6 +131,7 @@ namespace KMail {
     mEmbeddedParts.clear();
     mAttachmentList = QString::null;
     mBlank = false;
+    forgetLinks();
   }
 
   void WebKitPartHtmlWriter::end() {
@@ -153,6 +152,29 @@ namespace KMail {
   void WebKitPartHtmlWriter::reset() {
     mHtml = QString::null;
     mBodies.clear();
+    forgetLinks();
+  }
+
+  // The links of the document shown are valid until KMail writes the
+  // next one (its part ids are those of the message being shown).
+  void WebKitPartHtmlWriter::forgetLinks() {
+    mLinks.clear();
+    mLinkSecret = QString::null;
+  }
+
+  // 128 bits of the system's random source, hexadecimal; QString::null if
+  // there is none.
+  static QString randomSecret() {
+    QFile f( "/dev/urandom" );
+    if ( !f.open( IO_ReadOnly | IO_Raw ) )
+      return QString::null;
+    unsigned char bytes[16];
+    if ( f.readBlock( (char *)bytes, sizeof bytes ) != (Q_LONG)sizeof bytes )
+      return QString::null;
+    QString hex;
+    for ( unsigned i = 0; i < sizeof bytes; ++i )
+      hex += QString().sprintf( "%02x", bytes[i] );
+    return hex;
   }
 
   void WebKitPartHtmlWriter::write( const QString & str ) {
@@ -281,15 +303,17 @@ namespace KMail {
     // it to KMail, which opens the attachment (or asks, per the user's
     // setting).  They become links of a scheme of their own, which the
     // part gives to KMail on a click, and KMail turns back into the file:
-    // URL (originalURL()).  With a secret of this writer: a message cannot
-    // name them.
-    QRegExp link( "href=\"(file:[^\"]*)\"" );
-    if ( mLinks.count() > 10000 )
-      mLinks.clear();
-    for ( int pos = link.search( html ); pos >= 0; pos = link.search( html, pos ) ) {
+    // URL (originalURL()).  With a secret of this document (128 random
+    // bits): a message cannot name them.  Every message-derived string of
+    // KMail's document is quoted (labels, descriptions, header fields): the
+    // only href attributes are KMail's own.
+    forgetLinks();
+    mLinkSecret = randomSecret();
+    QRegExp link( "(\\s)href=\"(file:[^\"]*)\"" );
+    for ( int pos = mLinkSecret.isEmpty() ? -1 : link.search( html ); pos >= 0; pos = link.search( html, pos ) ) {
       const QString key = QString::fromLatin1( "kmail-link:%1-%2" ).arg( mLinkSecret ).arg( mLinks.count() );
-      mLinks[key] = link.cap( 1 );
-      const QString replacement = "href=\"" + key + "\"";
+      mLinks[key] = link.cap( 2 );
+      const QString replacement = link.cap( 1 ) + "href=\"" + key + "\"";
       html.replace( pos, link.matchedLength(), replacement );
       pos += replacement.length();
     }
@@ -324,7 +348,7 @@ namespace KMail {
 
   QString WebKitPartHtmlWriter::originalURL( const QString & url ) const {
     QMap<QString, QString>::ConstIterator it = mLinks.find( url );
-    return it == mLinks.end() ? url : it.data();
+    return it == mLinks.end() ? QString::null : it.data();
   }
 
   void WebKitPartHtmlWriter::slotCompleted() {

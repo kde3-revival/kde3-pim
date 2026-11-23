@@ -2080,7 +2080,8 @@ QString ObjectTreeParser::writeSigstatHeader( PartMetaData & block,
                                               const QString & filename )
 {
     const bool isSMIME = cryptProto && ( cryptProto == Kleo::CryptoBackendFactory::instance()->smime() );
-    QString signer = block.signer;
+    // the signer's user id comes from a key or certificate: text, not HTML
+    QString signer = KMMessage::quoteHtmlChars( block.signer, true );
 
     QString htmlStr, simpleHtmlStr;
     QString dir = ( QApplication::reverseLayout() ? "rtl" : "ltr" );
@@ -2199,7 +2200,7 @@ QString ObjectTreeParser::writeSigstatHeader( PartMetaData & block,
                     // extra hint for green case
                     // that email addresses in DN do not match fromAddress
                     QString greenCaseWarning;
-                    QString msgFrom( KPIM::getEmailAddress(fromAddress) );
+                    QString msgFrom( KMMessage::quoteHtmlChars( KPIM::getEmailAddress(fromAddress), true ) );
                     QString certificate;
                     if( block.keyId.isEmpty() )
                         certificate = i18n("certificate");
@@ -2374,8 +2375,7 @@ QString ObjectTreeParser::writeSigstatHeader( PartMetaData & block,
             }
             else
             {
-                // HTMLize the signer's user id and create mailto: link
-                signer = KMMessage::quoteHtmlChars( signer, true );
+                // create a mailto: link (signer is quoted already)
                 signer = "<a href=\"mailto:" + signer + "\">" + signer + "</a>";
 
                 if (block.isGoodSignature) {

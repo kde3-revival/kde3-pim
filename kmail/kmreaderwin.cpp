@@ -2066,17 +2066,24 @@ bool foundSMIMEData( const QString aUrl,
 
 //-----------------------------------------------------------------------------
 // A link of the WebKit document: the URL of KMail's document it stands
-// for (WebKitPartHtmlWriter::originalURL()).
+// for (WebKitPartHtmlWriter::originalURL()); an unknown or expired one is
+// an invalid URL, which nobody handles.
 KURL KMReaderWin::originalURL( const KURL & url ) const
 {
-  if ( !mWebWriter || url.protocol() != "kmail-link" )
+  if ( url.protocol() != "kmail-link" )
     return url;
-  return KURL( mWebWriter->originalURL( url.url() ) );
+  const QString original = mWebWriter ? mWebWriter->originalURL( url.url() ) : QString::null;
+  return original.isEmpty() ? KURL() : KURL( original );
 }
 
 void KMReaderWin::slotUrlOn(const QString &aUrlIn)
 {
-  const QString aUrl = originalURL( KURL( aUrlIn ) ).url();
+  const KURL original = originalURL( KURL( aUrlIn ) );
+  if ( !original.isValid() && KURL( aUrlIn ).protocol() == "kmail-link" ) {
+    KPIM::BroadcastStatus::instance()->reset();
+    return;
+  }
+  const QString aUrl = original.url();
   const KURL url(aUrl);
   if ( url.protocol() == "kmail" || url.protocol() == "x-kmail"
        || (url.protocol().isEmpty() && url.path().isEmpty()) ) {
@@ -2103,6 +2110,8 @@ void KMReaderWin::slotUrlOn(const QString &aUrlIn)
 void KMReaderWin::slotUrlOpen(const KURL &url, const KParts::URLArgs &)
 {
   const KURL aUrl = originalURL( url );
+  if ( url.protocol() == "kmail-link" && !aUrl.isValid() )
+    return;   // a link of a document no longer shown, or none of ours
   mUrlClicked = aUrl;
 
   if ( URLHandlerManager::instance()->handleClick( aUrl, this ) )
@@ -2116,6 +2125,8 @@ void KMReaderWin::slotUrlOpen(const KURL &url, const KParts::URLArgs &)
 void KMReaderWin::slotUrlPopup(const QString &aUrl, const QPoint& aPos)
 {
   const KURL url = originalURL( KURL( aUrl ) );
+  if ( KURL( aUrl ).protocol() == "kmail-link" && !url.isValid() )
+    return;
   mUrlClicked = url;
 
   if ( URLHandlerManager::instance()->handleContextMenuRequest( url, aPos, this ) )
@@ -3004,12 +3015,14 @@ QString KMReaderWin::renderAttachments(partNode * node, const QColor &bgColor )
       html += QString::fromLatin1( "<span style=\"white-space:nowrap; border-width: 0px; border-left-width: 5px; border-color: %1; 2px; border-left-style: solid;\">" ).arg( bgColor.name() );
       html += QString::fromLatin1( "<a href=\"#att%1\">" ).arg( node->nodeId() );
       html += "<img style=\"vertical-align:middle;\" src=\"" + icon + "\"/>&nbsp;";
+      // the label comes with the message (Content-Description, a file
+      // name): text, not HTML
       if ( headerStyle() == HeaderStyle::enterprise() ) {
         QFont bodyFont = mCSSHelper->bodyFont( isFixedFont() );
         QFontMetrics fm( bodyFont );
-        html += KStringHandler::rPixelSqueeze( label, fm, 140 );
+        html += KMMessage::quoteHtmlChars( KStringHandler::rPixelSqueeze( label, fm, 140 ), true );
       } else
-        html += label;
+        html += KMMessage::quoteHtmlChars( label, true );
       html += "</a></span></div> ";
     }
   }
