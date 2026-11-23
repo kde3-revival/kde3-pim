@@ -376,10 +376,13 @@ namespace KMail {
   void WebKitPartHtmlWriter::slotCompleted() {
     if ( mStats )
       fprintf( stderr, "kmail-webkit: document %u: end() -> loaded %lld ms\n", mSerial, nowMs() - mEndTime );
-    // The part paints the new document after its load: the cover stays a
-    // little longer, never the previous message after the cover.
+    // The part paints the new document after its load (its frames are
+    // sized first, then WebKit presents a frame): the cover stays a little
+    // longer, never the previous message after the cover.  The part does
+    // not say when the new document is on screen; 80 ms was too short on a
+    // loaded machine (the previous message for 150 ms after the cover).
     if ( mCover && mCover->isVisible() && mLoadedAfterCover && !mLoadTimer.isActive() )
-      mUncoverTimer.start( 80, true );
+      mUncoverTimer.start( 250, true );
   }
 
   void WebKitPartHtmlWriter::clearView( const QColor & background ) {
