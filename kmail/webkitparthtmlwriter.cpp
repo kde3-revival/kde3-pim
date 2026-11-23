@@ -357,8 +357,12 @@ namespace KMail {
     if ( mStats )
       fprintf( stderr, "kmail-webkit: document %u: end() -> files written %lld ms (%lld ms writing)\n",
                mSerial, nowMs() - mEndTime, nowMs() - start );
-    if ( mCover && mCover->isVisible() )
+    if ( mCover && mCover->isVisible() ) {
+      // the document of the cover's generation: the cover goes when it
+      // (or a later one) has completed, not when an earlier one did
       mLoadedAfterCover = true;
+      mUncoverTimer.stop();
+    }
     mPart->openURL( KURL::fromPathOrURL( index_html ) );
   }
 
@@ -387,6 +391,11 @@ namespace KMail {
     }
     mUncoverTimer.stop();
     mLoadedAfterCover = false;
+    // A document of the previous message not loaded yet: never.
+    mLoadTimer.stop();
+    mPendingHtml = QString::null;
+    mPendingBodies.clear();
+    mPendingEmbeddedParts.clear();
     // The X server fills the window with its background colour when it
     // is mapped: blank at once, before KMail prepares the next message.
     mCover->setPaletteBackgroundColor( background );
@@ -399,6 +408,8 @@ namespace KMail {
   }
 
   void WebKitPartHtmlWriter::slotUncover() {
+    if ( mLoadTimer.isActive() )
+      return;   // a newer document follows: its completed() uncovers
     if ( mCover )
       mCover->hide();
     if ( mStats )
