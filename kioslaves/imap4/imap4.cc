@@ -197,10 +197,14 @@ IMAP4Protocol::get (const KURL & _url)
   if (aInfo == "DECODE")
     decodeContent = true;
 
-  if (aSequence == "0:0" && getState() == ISTATE_SELECT)
+  // the latest state of the selected box; the SELECT of another box below
+  // gets that box's
+  if (aSequence == "0:0" && getState() == ISTATE_SELECT
+      && aBox == getCurrentBox())
   {
     imapCommand *cmd = doCommand (imapCommand::clientNoop());
     completeQueue.removeRef(cmd);
+    mTimeOfLastNoop = QDateTime::currentDateTime();
   }
 
   if (aSequence.isEmpty ())
