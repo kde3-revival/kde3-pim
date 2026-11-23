@@ -436,8 +436,8 @@ void KMSystemTray::hideKMail()
     mDesktopOfMainWin = KWin::windowInfo( mainWin->winId(),
                                           NET::WMDesktop ).desktop();
     mPosOfMainWin = mainWin->pos();
-    // iconifying is unnecessary, but it looks cooler
-    KWin::iconifyWindow( mainWin->winId() );
+    // only hidden, not iconified first: an iconified window comes back
+    // with the unminimize animation, the tray should show it at once
     mainWin->hide();
     mParentVisible = false;
   }
