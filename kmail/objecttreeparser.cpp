@@ -100,6 +100,7 @@
 // other Qt headers
 #include <qtextcodec.h>
 #include <qmap.h>
+#include <qshared.h>
 #include <qvaluelist.h>
 #include <kurl.h>
 #include <qdir.h>
@@ -140,6 +141,11 @@ namespace KMail {
   };
 
 
+  // hasHtmlPart() of the nodes, for the parse
+  struct ObjectTreeParser::HtmlAvailability : public QShared {
+    QMap<const partNode *, bool> nodes;
+  };
+
   ObjectTreeParser::ObjectTreeParser( KMReaderWin * reader, const Kleo::CryptoBackend::Protocol * protocol,
                                       bool showOnlyOneMimePart, bool keepEncryptions,
                                       bool includeSignatures,
@@ -153,7 +159,8 @@ namespace KMail {
       mIncludeSignatures( includeSignatures ),
       mAttachmentStrategy( strategy ),
       mHtmlWriter( htmlWriter ),
-      mCSSHelper( cssHelper )
+      mCSSHelper( cssHelper ),
+      mHtmlAvailability( new HtmlAvailability )
   {
     if ( !attachmentStrategy() )
       mAttachmentStrategy = reader ? reader->attachmentStrategy()
@@ -172,12 +179,16 @@ namespace KMail {
       mIncludeSignatures( other.includeSignatures() ),
       mAttachmentStrategy( other.attachmentStrategy() ),
       mHtmlWriter( other.htmlWriter() ),
-      mCSSHelper( other.cssHelper() )
+      mCSSHelper( other.cssHelper() ),
+      mHtmlAvailability( other.mHtmlAvailability )
   {
-
+    mHtmlAvailability->ref();
   }
 
-  ObjectTreeParser::~ObjectTreeParser() {}
+  ObjectTreeParser::~ObjectTreeParser() {
+    if ( mHtmlAvailability->deref() )
+      delete mHtmlAvailability;
+  }
 
   void ObjectTreeParser::insertAndParseNewChildNode( partNode& startNode,
                                                      const char* content,
@@ -1056,16 +1067,22 @@ namespace KMail {
     return true;
   }
 
-  // An HTML part in the subtree of @p node (not in attached messages).
-  static bool hasHtmlPart( const partNode * node ) {
-    if ( node->type() == DwMime::kTypeMessage )
-      return false;
+  // Once per node: nested alternatives (alternative > related >
+  // alternative > ...) each ask for their subtree, N levels would visit
+  // N x N nodes.  (A part decrypted during the parse is a child of a node
+  // parsed after every alternative above it has asked.)
+  bool ObjectTreeParser::hasHtmlPart( const partNode * node ) {
+    QMap<const partNode *, bool>::ConstIterator it = mHtmlAvailability->nodes.find( node );
+    if ( it != mHtmlAvailability->nodes.end() )
+      return it.data();
+    bool found = false;
     if ( node->type() == DwMime::kTypeText && node->subType() == DwMime::kSubtypeHtml )
-      return true;
-    for ( const partNode * child = node->firstChild(); child; child = child->nextSibling() )
-      if ( hasHtmlPart( child ) )
-        return true;
-    return false;
+      found = true;
+    else if ( node->type() != DwMime::kTypeMessage )
+      for ( const partNode * child = node->firstChild(); child && !found; child = child->nextSibling() )
+        found = hasHtmlPart( child );
+    mHtmlAvailability->nodes[node] = found;
+    return found;
   }
 
   bool ObjectTreeParser::processMultiPartAlternativeSubtype( partNode * node, ProcessResult & ) {
@@ -1079,7 +1096,7 @@ namespace KMail {
       // The HTML with its images: multipart/related (RFC 2387) whose root
       // is the HTML (or has it).
       for ( partNode * n = child; n; n = n->nextSibling() )
-        if ( partNode * root = n->relatedRoot() )
+        if ( partNode * root = mReader ? mReader->relatedRootOf( n ) : n->relatedRoot() )
           if ( hasHtmlPart( root ) ) {
             dataHtml = n;
             break;

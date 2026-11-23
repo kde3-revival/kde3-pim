@@ -99,8 +99,10 @@ namespace KMail {
 
   class ObjectTreeParser {
     class CryptoProtocolSaver;
+    struct HtmlAvailability;
     /** Internal. Copies the context of @p other, but not it's rawReplyString() */
     ObjectTreeParser( const ObjectTreeParser & other );
+    ObjectTreeParser & operator=( const ObjectTreeParser & );   // not defined
   public:
     ObjectTreeParser( KMReaderWin * reader=0, const Kleo::CryptoBackend::Protocol * protocol=0,
                       bool showOneMimePart=false, bool keepEncryptions=false,
@@ -270,6 +272,11 @@ namespace KMail {
 
     const QTextCodec * codecFor( partNode * node ) const;
 
+    /** Whether the subtree of @p node has an HTML part (not in attached
+        messages); computed once per node for the parse (shared by the
+        parsers of the parts). */
+    bool hasHtmlPart( const partNode * node );
+
 #ifdef MARCS_DEBUG
     void dumpToFile( const char * filename, const char * dataStart, size_t dataLen );
 #else
@@ -288,6 +295,7 @@ namespace KMail {
     const KMail::AttachmentStrategy * mAttachmentStrategy;
     KMail::HtmlWriter * mHtmlWriter;
     KMail::CSSHelper * mCSSHelper;
+    HtmlAvailability * mHtmlAvailability;   // shared with the copies
     // DataUrl Icons cache
     QString mCollapseIcon;
     QString mExpandIcon;
