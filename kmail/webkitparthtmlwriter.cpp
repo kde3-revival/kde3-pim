@@ -255,11 +255,13 @@ namespace KMail {
   }
 
   QString WebKitPartHtmlWriter::resolveCidUrls( const QString & html ) const {
-    QRegExp cid( "cid:([^\"'\\s>)]+)", false );
+    // Only in attribute values and url(), as KHTML's writer: not in the
+    // text of a message ("cid:..." written in it).
+    QRegExp cid( "([\"'(=]\\s*)cid:([^\"'\\s>)]+)", false );
     QString result;
     int last = 0;
     for ( int pos = cid.search( html ); pos >= 0; pos = cid.search( html, pos + cid.matchedLength() ) ) {
-      QString id = KURL::decode_string( cid.cap( 1 ) );
+      QString id = KURL::decode_string( cid.cap( 2 ) );
       QMap<QString, QString>::ConstIterator it = mPendingEmbeddedParts.find( id );
       if ( it == mPendingEmbeddedParts.end() )
         continue;
@@ -273,7 +275,7 @@ namespace KMail {
         // An image without a file name ("unnamed"): its content says.
         // The part takes data: images as image/* only.
         type = KMimeType::findByContent( data )->name();
-      result += html.mid( last, pos - last );
+      result += html.mid( last, pos - last ) + cid.cap( 1 );
       result += "data:" + type + ";base64," + QString::fromLatin1( KCodecs::base64Encode( data ) );
       last = pos + cid.matchedLength();
     }
