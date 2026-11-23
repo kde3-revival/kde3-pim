@@ -818,7 +818,9 @@ bool ObjectTreeParser::okDecryptMIME( partNode& data,
          attachmentStrategy()->defaultDisplay( curNode ) == AttachmentStrategy::Inline ||
          showOnlyOneMimePart() )
     {
-      if ( mReader->htmlMail() ) {
+      // A document of its own (WebKit): nothing to strip.
+      const bool isolated = mReader->htmlMail() && htmlWriter()->isolatesHtml();
+      if ( mReader->htmlMail() && !isolated ) {
         // ---Sven's strip </BODY> and </HTML> from end of attachment start-
         // We must fo this, or else we will see only 1st inlined html
         // attachment.  It is IMHO enough to search only for </BODY> and
@@ -832,6 +834,8 @@ bool ObjectTreeParser::okDecryptMIME( partNode& data,
           if ( 0 <= i ) cstr.truncate(i);
         }
         // ---Sven's strip </BODY> and </HTML> from end of attachment end-
+      }
+      if ( mReader->htmlMail() ) {
         // Show the "external references" warning (with possibility to load
         // external references only if loading external references is disabled
         // and the HTML code contains obvious external references). For
@@ -859,7 +863,10 @@ bool ObjectTreeParser::okDecryptMIME( partNode& data,
                                   "<a href=\"kmail:showHTML\">by clicking here</a>.") );
         htmlWriter()->queue( "</div><br><br>" );
       }
-      htmlWriter()->queue( codecFor( curNode )->toUnicode( mReader->htmlMail() ? cstr : KMMessage::html2source( cstr )));
+      if ( isolated )
+        htmlWriter()->queueIsolatedHtml( codecFor( curNode )->toUnicode( cstr ) );
+      else
+        htmlWriter()->queue( codecFor( curNode )->toUnicode( mReader->htmlMail() ? cstr : KMMessage::html2source( cstr )));
       mReader->mColorBar->setHtmlMode();
       return true;
     }

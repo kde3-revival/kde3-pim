@@ -112,6 +112,18 @@ namespace KMail {
      * Embed a part with Content-ID @p contentId, using url @p url.
      */
     virtual void embedPart( const QCString & contentId, const QString & url ) = 0;
+
+    /**
+     * True if the writer shows the HTML of queueIsolatedHtml() as a
+     * document of its own (its styles do not reach the rest).
+     */
+    virtual bool isolatesHtml() const { return false; }
+    /**
+     * Queue the complete HTML of a message part (a document with its
+     * own head and body).  Writers that do not isolate it queue it
+     * like the rest.
+     */
+    virtual void queueIsolatedHtml( const QString & html ) { queue( html ); }
   };
 
 } // namespace KMail

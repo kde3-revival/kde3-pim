@@ -81,6 +81,9 @@ using KMail::TeeHtmlWriter;
 
 // khtml headers
 #include <khtml_part.h>
+#include <kparts/browserextension.h>
+#include <kparts/componentfactory.h>
+#include "webkitparthtmlwriter.h"
 #include <khtmlview.h> // So that we can get rid of the frames
 #include <dom/html_element.h>
 #include <dom/html_block.h>
@@ -111,6 +114,7 @@ using KMail::TeeHtmlWriter;
 #include <kurldrag.h>
 
 #include <qclipboard.h>
+#include <qvariant.h>
 #include <qhbox.h>
 #include <qtextcodec.h>
 #include <qpaintdevicemetrics.h>
@@ -475,6 +479,28 @@ void KMReaderWin::createWidgets() {
   mBox->setFrameStyle( mMimePartTree->frameStyle() );
   mColorBar = new HtmlStatusBar( mBox, "mColorBar" );
   mViewer = new KHTMLPart( mBox, "mViewer" );
+  // [Reader] HtmlEngine=webkit: WPE WebKit (kde3-wpepart's mail mode)
+  // shows the messages; KHTML if it is not there.
+  mWebPart = 0;
+  mWebWriter = 0;
+  KConfigGroup reader( KMKernel::config(), "Reader" );
+  if ( reader.readEntry( "HtmlEngine", "khtml" ) == "webkit" ) {
+    int error = 0;
+    mWebPart = KParts::ComponentFactory::createPartInstanceFromLibrary<KParts::ReadOnlyPart>(
+      "libkwpepart", mBox, "mWebViewer", this, "mWebPart", QStringList( "mode=mail" ), &error );
+    // an older part without the mail mode
+    if ( mWebPart && !mWebPart->property( "mailLoadExternal" ).isValid() ) {
+      delete mWebPart;
+      mWebPart = 0;
+    }
+    if ( mWebPart ) {
+      mViewer->widget()->hide();
+      mBox->setStretchFactor( mWebPart->widget(), 1 );
+    }
+    else
+      kdWarning( 5006 ) << "KMReaderWin: the WPE WebKit part (libkwpepart) with its mail mode is not available"
+                        << " (error " << error << "): KHTML shows the messages" << endl;
+  }
   mSplitter->setOpaqueResize( KGlobalSettings::opaqueResize() );
   mSplitter->setResizeMode( mMimePartTree, QSplitter::KeepSize );
 }
@@ -1053,6 +1079,24 @@ void KMReaderWin::initHtmlWidget(void)
   // register our own event filter for shift-click
   mViewer->view()->viewport()->installEventFilter( this );
 
+  if ( !htmlWriter() && mWebPart ) {
+    mWebWriter = new KMail::WebKitPartHtmlWriter( mWebPart, 0 );
+    mHtmlWriter = mWebWriter;
+    mWebPart->widget()->setFocusPolicy( WheelFocus );
+    KParts::BrowserExtension * ext = KParts::BrowserExtension::childObject( mWebPart );
+    if ( ext ) {
+      connect( ext, SIGNAL(openURLRequest(const KURL &, const KParts::URLArgs &)),
+               this, SLOT(slotUrlOpen(const KURL &)) );
+      connect( ext, SIGNAL(createNewWindow(const KURL &, const KParts::URLArgs &)),
+               this, SLOT(slotUrlOpen(const KURL &)) );
+      connect( this, SIGNAL(webCopy()), ext, SLOT(copy()) );
+    }
+    connect( mWebPart, SIGNAL(onURL(const QString &)), this, SLOT(slotUrlOn(const QString &)) );
+    connect( mWebPart, SIGNAL(popupMenu(const QString &, const QPoint &)),
+             SLOT(slotUrlPopup(const QString &, const QPoint &)) );
+    connect( this, SIGNAL(webScrollBy(int, int)), mWebPart, SLOT(scrollBy(int, int)) );
+    connect( this, SIGNAL(webSelectAll()), mWebPart, SLOT(selectAll()) );
+  }
   if ( !htmlWriter() )
 #ifdef KMAIL_READER_HTML_DEBUG
     mHtmlWriter = new TeeHtmlWriter( new FileHtmlWriter( QString::null ),
@@ -1436,6 +1480,8 @@ void KMReaderWin::updateReaderWin()
   if (!mMsgDisplay) return;
 
   mViewer->setOnlyLocalReferences(!htmlLoadExternal());
+  if ( mWebPart )
+    mWebPart->setProperty( "mailLoadExternal", QVariant( htmlLoadExternal(), 0 ) );
 
   htmlWriter()->reset();
 
@@ -1450,11 +1496,21 @@ void KMReaderWin::updateReaderWin()
   }
   else
   {
-    mColorBar->hide();
-    mMimePartTree->hide();
-    mMimePartTree->clear();
+    if ( mWebWriter ) {
+      // WebKit: the reader keeps its size (and the last message) until
+      // the empty page is really shown; often the next message comes
+      // first.  A narrower or taller reader would make WebKit lay out and
+      // paint the old message again, twice.
+      QTimer::singleShot( 450, this, SLOT(slotHideEmptyReaderParts()) );
+    } else {
+      mColorBar->hide();
+      mMimePartTree->hide();
+      mMimePartTree->clear();
+    }
     htmlWriter()->begin( mCSSHelper->cssDefinitions( isFixedFont() ) );
     htmlWriter()->write( mCSSHelper->htmlHead( isFixedFont() ) + "</body></html>" );
+    if ( mWebWriter )
+      mWebWriter->setBlank();
     htmlWriter()->end();
   }
 
@@ -1517,9 +1573,13 @@ void KMReaderWin::displayMessage() {
     mColorBar->setNormalMode();
 
   htmlWriter()->queue("</body></html>");
+  // WebKit: the attachment list goes into the document before it is shown.
+  if ( mWebWriter )
+    mWebWriter->setAttachmentList( attachmentListHtml() );
   htmlWriter()->flush();
 
-  QTimer::singleShot( 1, this, SLOT(injectAttachments()) );
+  if ( !mWebWriter )
+    QTimer::singleShot( 1, this, SLOT(injectAttachments()) );
 }
 
 
@@ -2059,6 +2119,10 @@ void KMReaderWin::slotToggleFixedFont()
 //-----------------------------------------------------------------------------
 void KMReaderWin::slotCopySelectedText()
 {
+  if ( mWebPart ) {
+    emit webCopy();
+    return;
+  }
   kapp->clipboard()->setText( mViewer->selectedText() );
 }
 
@@ -2312,6 +2376,10 @@ void KMReaderWin::openAttachment( int id, const QString & name )
 //-----------------------------------------------------------------------------
 void KMReaderWin::slotScrollUp()
 {
+  if ( mWebPart ) {
+    emit webScrollBy( 0, -10 );
+    return;
+  }
   static_cast<QScrollView *>(mViewer->widget())->scrollBy(0, -10);
 }
 
@@ -2319,6 +2387,10 @@ void KMReaderWin::slotScrollUp()
 //-----------------------------------------------------------------------------
 void KMReaderWin::slotScrollDown()
 {
+  if ( mWebPart ) {
+    emit webScrollBy( 0, 10 );
+    return;
+  }
   static_cast<QScrollView *>(mViewer->widget())->scrollBy(0, 10);
 }
 
@@ -2331,6 +2403,10 @@ bool KMReaderWin::atBottom() const
 //-----------------------------------------------------------------------------
 void KMReaderWin::slotJumpDown()
 {
+    if ( mWebPart ) {
+      emit webScrollBy( 0, QMAX( mWebPart->widget()->height() - 30, 10 ) );
+      return;
+    }
     QScrollView *view = static_cast<QScrollView *>(mViewer->widget());
     int offs = (view->clipper()->height() < 30) ? view->clipper()->height() : 30;
     view->scrollBy( 0, view->clipper()->height() - offs );
@@ -2339,6 +2415,10 @@ void KMReaderWin::slotJumpDown()
 //-----------------------------------------------------------------------------
 void KMReaderWin::slotScrollPrior()
 {
+  if ( mWebPart ) {
+    emit webScrollBy( 0, -(int)(height()*0.8) );
+    return;
+  }
   static_cast<QScrollView *>(mViewer->widget())->scrollBy(0, -(int)(height()*0.8));
 }
 
@@ -2346,6 +2426,10 @@ void KMReaderWin::slotScrollPrior()
 //-----------------------------------------------------------------------------
 void KMReaderWin::slotScrollNext()
 {
+  if ( mWebPart ) {
+    emit webScrollBy( 0, (int)(height()*0.8) );
+    return;
+  }
   static_cast<QScrollView *>(mViewer->widget())->scrollBy(0, (int)(height()*0.8));
 }
 
@@ -2366,6 +2450,10 @@ void KMReaderWin::slotTextSelected(bool)
 //-----------------------------------------------------------------------------
 void KMReaderWin::selectAll()
 {
+  if ( mWebPart ) {
+    emit webSelectAll();
+    return;
+  }
   mViewer->selectAll();
 }
 
@@ -2655,6 +2743,15 @@ bool KMReaderWin::decryptMessage() const
   return true;
 }
 
+void KMReaderWin::slotHideEmptyReaderParts()
+{
+  if ( message() )
+    return;
+  mColorBar->hide();
+  mMimePartTree->hide();
+  mMimePartTree->clear();
+}
+
 void KMReaderWin::injectAttachments()
 {
   // inject attachments in header view
@@ -2664,6 +2761,16 @@ void KMReaderWin::injectAttachments()
   if ( injectionPoint.isNull() )
     return;
 
+  QString html = attachmentListHtml();
+  if ( html.isEmpty() )
+    return;
+
+  assert( injectionPoint.tagName() == "div" );
+  static_cast<DOM::HTMLElement>( injectionPoint ).setInnerHTML( html );
+}
+
+QString KMReaderWin::attachmentListHtml()
+{
   QString imgpath( locate("data","kmail/pics/") );
   QString visibility;
   QString urlHandle;
@@ -2679,19 +2786,17 @@ void KMReaderWin::injectAttachments()
 
   QString html = renderAttachments( mRootNode, QApplication::palette().active().background() );
   if ( html.isEmpty() )
-    return;
+    return html;
 
-    if ( headerStyle() == HeaderStyle::fancy() )
-      html.prepend( QString::fromLatin1("<div style=\"float:left;\">%1&nbsp;</div>" ).arg(i18n("Attachments:")) );
+  if ( headerStyle() == HeaderStyle::fancy() )
+    html.prepend( QString::fromLatin1("<div style=\"float:left;\">%1&nbsp;</div>" ).arg(i18n("Attachments:")) );
 
-    if ( headerStyle() == HeaderStyle::enterprise() ) {
-      QString link("");
-      link += "<div style=\"text-align: right;\"><a href=\""+urlHandle+"\"><img src=\""+imgpath+imgSrc+"\"/></a></div>";
-      html.prepend( link );
-    }
-
-    assert( injectionPoint.tagName() == "div" );
-    static_cast<DOM::HTMLElement>( injectionPoint ).setInnerHTML( html );  
+  if ( headerStyle() == HeaderStyle::enterprise() ) {
+    QString link("");
+    link += "<div style=\"text-align: right;\"><a href=\""+urlHandle+"\"><img src=\""+imgpath+imgSrc+"\"/></a></div>";
+    html.prepend( link );
+  }
+  return html;
 }
 
 static QColor nextColor( const QColor & c )

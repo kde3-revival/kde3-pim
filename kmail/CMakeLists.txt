@@ -120,6 +120,7 @@ kde3_add_library(kmailprivate SHARED
     headerstrategy.cpp
     headerstyle.cpp
     khtmlparthtmlwriter.cpp
+    webkitparthtmlwriter.cpp
     filehtmlwriter.cpp
     teehtmlwriter.cpp
     mailcomposerIface.skel
@@ -277,6 +278,7 @@ kde3_add_library(kmailprivate SHARED
     index.h
     jobscheduler.h
     khtmlparthtmlwriter.h
+    webkitparthtmlwriter.h
     klistboxdialog.h
     klistviewindexedsearchline.h
     kmaccount.h

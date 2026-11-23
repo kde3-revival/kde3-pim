@@ -50,6 +50,7 @@ namespace KMail {
   class HeaderStyle;
   class HtmlWriter;
   class KHtmlPartHtmlWriter;
+  class WebKitPartHtmlWriter;
   class ISubject;
   class HtmlStatusBar;
   class FolderJob;
@@ -63,6 +64,7 @@ class NewByteArray; // providing operator+ on a QByteArray (khz, 21.06.2002)
 
 namespace KParts {
   struct URLArgs;
+  class ReadOnlyPart;
 }
 
 /**
@@ -303,6 +305,10 @@ public:
   void setShowAttachmentQuicklist( bool showAttachmentQuicklist = true ) { mShowAttachmentQuicklist = showAttachmentQuicklist; }
 
 signals:
+  /** For the WebKit part (mWebPart). */
+  void webScrollBy( int dx, int dy );
+  void webCopy();
+  void webSelectAll();
   /** Emitted after parsing of a message to have it stored
       in unencrypted state in it's folder. */
   void replaceMsgByUnencryptedVersion();
@@ -465,6 +471,8 @@ protected:
 private slots:
   void slotSetEncoding();
   void injectAttachments();
+  /** WebKit: the colour bar and the MIME tree go once no message is shown. */
+  void slotHideEmptyReaderParts();
 
 private:
   void adjustLayout();
@@ -479,6 +487,8 @@ private:
   void readGlobalOverrideCodec();
 
   QString renderAttachments( partNode *node, const QColor &bgColor );
+  /** The attachment list of the header (KMail's <div id="attachmentInjectionPoint">). */
+  QString attachmentListHtml();
 
 private:
   bool mHtmlMail, mHtmlLoadExternal, mHtmlOverride, mHtmlLoadExtOverride;
@@ -491,6 +501,10 @@ private:
   KMail::HtmlStatusBar *mColorBar;
   KMMimePartTree* mMimePartTree;
   KHTMLPart *mViewer;
+  // [Reader] HtmlEngine=webkit: the WPE WebKit part (mail mode) shows the
+  // messages, mViewer stays hidden.
+  KParts::ReadOnlyPart *mWebPart;
+  KMail::WebKitPartHtmlWriter *mWebWriter;
 
   const KMail::AttachmentStrategy * mAttachmentStrategy;
   const KMail::HeaderStrategy * mHeaderStrategy;
