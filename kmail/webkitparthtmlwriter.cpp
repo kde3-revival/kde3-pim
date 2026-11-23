@@ -34,6 +34,7 @@
 
 #include "webkitparthtmlwriter.h"
 
+#include <kapplication.h>
 #include <kdebug.h>
 #include <kglobal.h>
 #include <kmdcodec.h>
@@ -112,6 +113,7 @@ namespace KMail {
       mLoadTimer( 0, "mLoadTimer" ), mSerial( 0 ),
       mStats( getenv( "KMAIL_WEBKIT_STATS" ) != 0 ), mEndTime( 0 )
   {
+    mLinkSecret = QString::number( KApplication::random(), 36 ) + QString::number( KApplication::random(), 36 );
     connect( &mLoadTimer, SIGNAL(timeout()), SLOT(slotLoad()) );
     if ( part )
       connect( part, SIGNAL(completed()), SLOT(slotCompleted()) );
@@ -273,6 +275,25 @@ namespace KMail {
       pos += replacement.length();
     }
 
+    // href="file:..." of KMail's document (an attachment's temporary file:
+    // a part icon, an image shown inline): WebKit does not navigate to
+    // file: from our scheme, so the click never reached KMail; KHTML gave
+    // it to KMail, which opens the attachment (or asks, per the user's
+    // setting).  They become links of a scheme of their own, which the
+    // part gives to KMail on a click, and KMail turns back into the file:
+    // URL (originalURL()).  With a secret of this writer: a message cannot
+    // name them.
+    QRegExp link( "href=\"(file:[^\"]*)\"" );
+    if ( mLinks.count() > 10000 )
+      mLinks.clear();
+    for ( int pos = link.search( html ); pos >= 0; pos = link.search( html, pos ) ) {
+      const QString key = QString::fromLatin1( "kmail-link:%1-%2" ).arg( mLinkSecret ).arg( mLinks.count() );
+      mLinks[key] = link.cap( 1 );
+      const QString replacement = "href=\"" + key + "\"";
+      html.replace( pos, link.matchedLength(), replacement );
+      pos += replacement.length();
+    }
+
     QString index_html = dir + "/index.html";
     // KMail's style sheet (KHTML's user style sheet) in the head of
     // KMail's document only.
@@ -299,6 +320,11 @@ namespace KMail {
       fprintf( stderr, "kmail-webkit: document %u: end() -> files written %lld ms (%lld ms writing)\n",
                mSerial, nowMs() - mEndTime, nowMs() - start );
     mPart->openURL( KURL::fromPathOrURL( index_html ) );
+  }
+
+  QString WebKitPartHtmlWriter::originalURL( const QString & url ) const {
+    QMap<QString, QString>::ConstIterator it = mLinks.find( url );
+    return it == mLinks.end() ? url : it.data();
   }
 
   void WebKitPartHtmlWriter::slotCompleted() {

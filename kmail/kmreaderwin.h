@@ -475,6 +475,7 @@ private slots:
   void slotHideEmptyReaderParts();
 
 private:
+  KURL originalURL( const KURL & url ) const;
   void adjustLayout();
   void createWidgets();
   void createActions( KActionCollection * ac );

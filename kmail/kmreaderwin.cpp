@@ -2065,8 +2065,18 @@ bool foundSMIMEData( const QString aUrl,
 
 
 //-----------------------------------------------------------------------------
-void KMReaderWin::slotUrlOn(const QString &aUrl)
+// A link of the WebKit document: the URL of KMail's document it stands
+// for (WebKitPartHtmlWriter::originalURL()).
+KURL KMReaderWin::originalURL( const KURL & url ) const
 {
+  if ( !mWebWriter || url.protocol() != "kmail-link" )
+    return url;
+  return KURL( mWebWriter->originalURL( url.url() ) );
+}
+
+void KMReaderWin::slotUrlOn(const QString &aUrlIn)
+{
+  const QString aUrl = originalURL( KURL( aUrlIn ) ).url();
   const KURL url(aUrl);
   if ( url.protocol() == "kmail" || url.protocol() == "x-kmail"
        || (url.protocol().isEmpty() && url.path().isEmpty()) ) {
@@ -2090,8 +2100,9 @@ void KMReaderWin::slotUrlOn(const QString &aUrl)
 
 
 //-----------------------------------------------------------------------------
-void KMReaderWin::slotUrlOpen(const KURL &aUrl, const KParts::URLArgs &)
+void KMReaderWin::slotUrlOpen(const KURL &url, const KParts::URLArgs &)
 {
+  const KURL aUrl = originalURL( url );
   mUrlClicked = aUrl;
 
   if ( URLHandlerManager::instance()->handleClick( aUrl, this ) )
@@ -2104,7 +2115,7 @@ void KMReaderWin::slotUrlOpen(const KURL &aUrl, const KParts::URLArgs &)
 //-----------------------------------------------------------------------------
 void KMReaderWin::slotUrlPopup(const QString &aUrl, const QPoint& aPos)
 {
-  const KURL url( aUrl );
+  const KURL url = originalURL( KURL( aUrl ) );
   mUrlClicked = url;
 
   if ( URLHandlerManager::instance()->handleContextMenuRequest( url, aPos, this ) )
