@@ -157,11 +157,17 @@ namespace KMail {
   //-----------------------------------------------------------------------------
   bool BodyVisitor::isRelatedPart( KMMessagePart *part )
   {
-    // The parts of a multipart/related: the images its HTML shows in place
-    // (no icon to load them with a click).  Which ones the HTML references
-    // is known only once it is loaded: all of them.
-    return part->parent() &&
-           part->parent()->originalContentTypeStr() == "MULTIPART/RELATED";
+    // The parts in a multipart/related, at any depth (its root can be a
+    // multipart of its own): the images its HTML shows in place (no icon
+    // to load them with a click).  Which ones the HTML references is known
+    // only once it is loaded: all of them.  Not into attached messages.
+    for ( KMMessagePart * p = part->parent(); p; p = p->parent() ) {
+      if ( p->originalContentTypeStr() == "MULTIPART/RELATED" )
+        return true;
+      if ( p->originalContentTypeStr() == "MESSAGE/RFC822" )
+        return false;
+    }
+    return false;
   }
 
   //=============================================================================

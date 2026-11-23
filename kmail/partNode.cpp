@@ -36,8 +36,6 @@
 #include "kmmimeparttree.h"
 #include <mimelib/utility.h>
 #include <qregexp.h>
-#include <qstringlist.h>
-#include <kurl.h>
 #include <kasciistricmp.h>
 #include "util.h"
 
@@ -630,43 +628,6 @@ partNode * partNode::relatedRoot() const
       if ( child->contentIdNoBrackets() == start )
         return child;
   return firstChild();
-}
-
-static void collectContentIdReferences( const partNode * node, QStringList & ids )
-{
-  if ( node->type() == DwMime::kTypeMessage )
-    return;   // an attached message: its own references
-  if ( node->type() == DwMime::kTypeText && node->subType() == DwMime::kSubtypeHtml ) {
-    // As the writers resolve them (KHtmlPartHtmlWriter, WebKitPartHtmlWriter).
-    const QString html = node->msgPart().bodyToUnicode();
-    QRegExp cid( "cid:([^\"'\\s>)]+)", false );
-    for ( int pos = cid.search( html ); pos >= 0; pos = cid.search( html, pos + cid.matchedLength() ) ) {
-      const QString id = KURL::decode_string( cid.cap( 1 ) );
-      if ( !ids.contains( id ) )
-        ids.append( id );
-    }
-  }
-  for ( const partNode * child = node->firstChild(); child; child = child->nextSibling() )
-    collectContentIdReferences( child, ids );
-}
-
-QStringList partNode::referencedContentIds() const
-{
-  QStringList ids;
-  collectContentIdReferences( this, ids );
-  return ids;
-}
-
-bool partNode::isRelatedResource() const
-{
-  const partNode * related = parentNode();
-  if ( !related || type() == DwMime::kTypeMultipart )
-    return false;
-  const partNode * root = related->relatedRoot();
-  if ( !root || root == this )
-    return false;
-  const QString id = contentIdNoBrackets();
-  return !id.isEmpty() && root->referencedContentIds().contains( id );
 }
 
 const QString& partNode::trueFromAddress() const

@@ -398,17 +398,25 @@ public:
   KMSaveAttachmentsCommand( QWidget *parent, QPtrList<partNode> &attachments,
                             KMMessage *msg, bool encoded = false  );
 
+  /** The images the reader shows in the HTML of the message with serial
+      number @p serNum (KMReaderWin::embeddedResources()): not saved as
+      attachments of it. */
+  void setEmbeddedResources( Q_UINT32 serNum, const QMap<int, QString> & resources );
+
 private slots:
   void slotSaveAll();
 
 private:
   virtual Result execute();
   Result saveItem( partNode *node, const KURL& url );
+  bool isEmbeddedResource( partNode * node, KMMessage * msg ) const;
 
 private:
   PartNodeMessageMap mAttachmentMap;
   bool mImplicitAttachments;
   bool mEncoded;
+  Q_UINT32 mEmbeddedSerNum;
+  QMap<int, QString> mEmbeddedResources;
 };
 
 class KDE_EXPORT KMReplyToCommand : public KMCommand

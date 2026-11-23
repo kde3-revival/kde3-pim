@@ -1748,6 +1748,8 @@ void KMReaderWin::parseMsg(KMMessage* aMsg)
   htmlWriter()->queue( writeMsgHeader(aMsg, hasVCard, true ) );
 
   // show message content
+  mEmbeddedResourceKeys.clear();
+  mEmbeddedResourceIds.clear();
   ObjectTreeParser otp( this );
   otp.parseObjectTree( mRootNode );
 
@@ -1868,6 +1870,19 @@ QString KMReaderWin::writeMsgHeader(KMMessage* aMsg, bool hasVCard, bool topLeve
 }
 
 
+
+//-----------------------------------------------------------------------------
+void KMReaderWin::addEmbeddedResource( partNode * node, const QString & key )
+{
+  mEmbeddedResourceKeys[node] = key;
+  mEmbeddedResourceIds[node->nodeId()] = node->contentIdNoBrackets();
+}
+
+QString KMReaderWin::embeddedResourceKey( partNode * node ) const
+{
+  QMap<partNode *, QString>::ConstIterator it = mEmbeddedResourceKeys.find( node );
+  return it == mEmbeddedResourceKeys.end() ? QString::null : it.data();
+}
 
 //-----------------------------------------------------------------------------
 QString KMReaderWin::writeMessagePartToTempFile( KMMessagePart* aMsgPart,
@@ -2827,6 +2842,8 @@ void KMReaderWin::slotSaveAttachments()
   mAtmUpdate = true;
   KMSaveAttachmentsCommand *saveCommand = new KMSaveAttachmentsCommand( mMainWindow,
                                                                         message() );
+  if ( message() )
+    saveCommand->setEmbeddedResources( message()->getMsgSerNum(), embeddedResources() );
   saveCommand->start();
 }
 
@@ -3022,7 +3039,7 @@ QString KMReaderWin::renderAttachments(partNode * node, const QColor &bgColor )
     }
     typeBlacklisted = typeBlacklisted || node == mRootNode;
     // An image the HTML of a multipart/related shows: not an attachment.
-    typeBlacklisted = typeBlacklisted || node->isRelatedResource();
+    typeBlacklisted = typeBlacklisted || mEmbeddedResourceKeys.contains( node );
     if ( !label.isEmpty() && !icon.isEmpty() && !typeBlacklisted ) {
       html += "<div style=\"float:left;\">";
       html += QString::fromLatin1( "<span style=\"white-space:nowrap; border-width: 0px; border-left-width: 5px; border-color: %1; 2px; border-left-style: solid;\">" ).arg( bgColor.name() );

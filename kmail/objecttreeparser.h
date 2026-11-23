@@ -159,9 +159,13 @@ namespace KMail {
         kroupware hacks) */
     void stdChildHandling( partNode * child );
 
-    /** A resource of a multipart/related root (an image it references by
-        @p contentId): to a temporary file, known to the writer, no icon. */
-    void embedRelatedPart( partNode * node, const QString & contentId );
+    /** @p html of @p htmlNode, shown as HTML, with the resources of its
+        multipart/related embedded (see the implementation). */
+    QString embedRelatedResources( partNode * htmlNode, const QString & html );
+    /** A resource of a multipart/related root: to a temporary file, known
+        to the writer and the reader under a key of its own (returned);
+        QString::null if it could not be embedded. */
+    QString embedRelatedPart( partNode * node );
 
     void defaultHandling( partNode * node, ProcessResult & result );
 

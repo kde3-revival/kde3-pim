@@ -6,6 +6,7 @@
 #define KMREADERWIN_H
 
 #include <qwidget.h>
+#include <qmap.h>
 #include <qtimer.h>
 #include <qstringlist.h>
 #include <kurl.h>
@@ -84,6 +85,15 @@ class KMReaderWin: public QWidget, public KMail::Interface::Observer {
   friend class KMail::KHtmlPartHtmlWriter;
 
 public:
+  /** A resource of a multipart/related HTML root, embedded into the
+      shown message under @p key (ObjectTreeParser): not an attachment of
+      the message shown (attachment list, "save all attachments"). */
+  void addEmbeddedResource( partNode * node, const QString & key );
+  /** The key @p node was embedded under, or QString::null. */
+  QString embeddedResourceKey( partNode * node ) const;
+  /** The embedded resources of the message shown: node id -> Content-ID. */
+  QMap<int, QString> embeddedResources() const { return mEmbeddedResourceIds; }
+
   KMReaderWin( QWidget *parent,
 	       QWidget *mainWindow,
 	       KActionCollection *actionCollection,
@@ -445,6 +455,7 @@ protected:
   */
   QString writeMessagePartToTempFile( KMMessagePart* msgPart, int partNumber );
 
+
   /**
     Creates a temporary dir for saving attachments, etc.
     Will be automatically deleted when another message is viewed.
@@ -497,6 +508,8 @@ private:
   bool mHtmlMail, mHtmlLoadExternal, mHtmlOverride, mHtmlLoadExtOverride;
   int mAtmCurrent;
   QString mAtmCurrentName;
+  QMap<partNode *, QString> mEmbeddedResourceKeys;
+  QMap<int, QString> mEmbeddedResourceIds;
   KMMessage *mMessage;
   // widgets:
   QSplitter * mSplitter;
