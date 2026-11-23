@@ -266,6 +266,10 @@ namespace KMail {
         continue;
       QByteArray data = f.readAll();
       QString type = KMimeType::findByPath( path, 0, true )->name();
+      if ( !type.startsWith( "image/" ) )
+        // An image without a file name ("unnamed"): its content says.
+        // The part takes data: images as image/* only.
+        type = KMimeType::findByContent( data )->name();
       result += html.mid( last, pos - last );
       result += "data:" + type + ";base64," + QString::fromLatin1( KCodecs::base64Encode( data ) );
       last = pos + cid.matchedLength();

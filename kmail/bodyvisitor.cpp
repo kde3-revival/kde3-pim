@@ -117,6 +117,7 @@ namespace KMail {
       // look at the basic list, ask the subclass and check the parent
       if ( mBasicList.contains( part->originalContentTypeStr() ) ||
            parentNeedsLoading( part ) ||
+           isRelatedPart( part ) ||
            addPartToList( part ) )
       {
         if ( part->typeStr() != "MULTIPART" ||
@@ -151,6 +152,16 @@ namespace KMail {
       part = part->parent();
     }
     return false;
+  }
+
+  //-----------------------------------------------------------------------------
+  bool BodyVisitor::isRelatedPart( KMMessagePart *part )
+  {
+    // The parts of a multipart/related: the images its HTML shows in place
+    // (no icon to load them with a click).  Which ones the HTML references
+    // is known only once it is loaded: all of them.
+    return part->parent() &&
+           part->parent()->originalContentTypeStr() == "MULTIPART/RELATED";
   }
 
   //=============================================================================

@@ -2481,10 +2481,12 @@ void KMSaveAttachmentsCommand::slotSaveAll()
           it != mAttachmentMap.end(); ) {
       // only body parts which have a filename or a name parameter (except for
       // the root node for which name is set to the message's subject) are
-      // considered attachments
-      if ( it.key()->msgPart().fileName().stripWhiteSpace().isEmpty() &&
-           ( it.key()->msgPart().name().stripWhiteSpace().isEmpty() ||
-             !it.key()->parentNode() ) ) {
+      // considered attachments; not the images the HTML of a
+      // multipart/related shows (its resources)
+      if ( ( it.key()->msgPart().fileName().stripWhiteSpace().isEmpty() &&
+             ( it.key()->msgPart().name().stripWhiteSpace().isEmpty() ||
+               !it.key()->parentNode() ) ) ||
+           it.key()->isRelatedResource() ) {
         PartNodeMessageMap::iterator delIt = it;
         ++it;
         mAttachmentMap.remove( delIt );

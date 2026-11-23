@@ -43,6 +43,7 @@
 #include <mimelib/utility.h>
 
 #include <kio/global.h>
+#include <qstringlist.h>
 #include <kdebug.h>
 
 class KMMimePartTreeItem;
@@ -218,6 +219,26 @@ public:
     bool isFirstTextPart() const;
 
     bool hasContentDispositionInline() const;
+
+    /** The Content-ID without its angle brackets (QString::null if none). */
+    QString contentIdNoBrackets() const;
+
+    /** For a multipart/related node (RFC 2387): its root part, the part
+        the "start" parameter names, else the first part.  0 for any other
+        node. */
+    partNode * relatedRoot() const;
+
+    /** True for a part of a multipart/related, other than its root, that
+        the HTML of the root references by its Content-ID (cid:): an image
+        of the root shown in place, not an attachment.  A part the root does
+        not reference stays an attachment (some mailers use related for
+        plain attachments). */
+    bool isRelatedResource() const;
+
+    /** The Content-IDs (without angle brackets) the cid: URLs of the HTML
+        parts of the subtree of this node reference; not those of attached
+        messages. */
+    QStringList referencedContentIds() const;
 
     QString contentTypeParameter( const char * name ) const;
 

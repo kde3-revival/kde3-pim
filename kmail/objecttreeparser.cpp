@@ -1055,6 +1055,15 @@ namespace KMail {
 
     partNode * dataHtml = child->findType( DwMime::kTypeText,
                                            DwMime::kSubtypeHtml, false, true );
+    if ( !dataHtml )
+      // The HTML with its images: multipart/related (RFC 2387) whose root
+      // is the HTML (or has it).
+      for ( partNode * n = child; n; n = n->nextSibling() )
+        if ( partNode * root = n->relatedRoot() )
+          if ( root->findType( DwMime::kTypeText, DwMime::kSubtypeHtml, true, false ) ) {
+            dataHtml = n;
+            break;
+          }
     partNode * dataPlain = child->findType( DwMime::kTypeText,
                                             DwMime::kSubtypePlain, false, true );
 
@@ -1075,6 +1084,47 @@ namespace KMail {
 
     stdChildHandling( child );
     return true;
+  }
+
+  // RFC 2387: the root part is the document; the parts it references by
+  // Content-ID are its resources (images), shown in place by the writer
+  // (HtmlWriter::embedPart()), not as attachments.  They stay in the MIME
+  // tree.  Parts the root does not reference are attachments.
+  bool ObjectTreeParser::processMultiPartRelatedSubtype( partNode * node, ProcessResult & ) {
+    partNode * root = node->relatedRoot();
+    if ( !root )
+      return false;
+
+    // Before the root: the writers resolve cid: URLs of the HTML while it
+    // is written (KHTML: CSS too).
+    const QStringList ids = root->referencedContentIds();
+    for ( partNode * child = node->firstChild(); child; child = child->nextSibling() ) {
+      if ( child == root || child->type() == DwMime::kTypeMultipart )
+        continue;
+      const QString id = child->contentIdNoBrackets();
+      if ( id.isEmpty() || !ids.contains( id ) )
+        continue;
+      embedRelatedPart( child, id );
+      child->setProcessed( true, false );
+    }
+
+    // The root, then the parts that are not resources (before and after
+    // the root), as multipart/mixed does.
+    stdChildHandling( root );
+    stdChildHandling( node->firstChild() );
+    return true;
+  }
+
+  void ObjectTreeParser::embedRelatedPart( partNode * node, const QString & contentId ) {
+    if ( !mReader || !htmlWriter() )
+      return;
+    // Not loaded (yet): the writer leaves the cid: URL alone.
+    if ( !node->msgPart().isComplete() )
+      return;
+    const QString fileName = mReader->writeMessagePartToTempFile( &node->msgPart(), node->nodeId() );
+    if ( fileName.isEmpty() )
+      return;
+    htmlWriter()->embedPart( contentId.latin1(), "file:" + KURL::encode_string( fileName ) );
   }
 
   bool ObjectTreeParser::processMultiPartDigestSubtype( partNode * node, ProcessResult & result ) {

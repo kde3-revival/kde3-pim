@@ -3010,6 +3010,8 @@ QString KMReaderWin::renderAttachments(partNode * node, const QColor &bgColor )
           || node->msgPart().subtypeStr() == "pkcs7-signature";
     }
     typeBlacklisted = typeBlacklisted || node == mRootNode;
+    // An image the HTML of a multipart/related shows: not an attachment.
+    typeBlacklisted = typeBlacklisted || node->isRelatedResource();
     if ( !label.isEmpty() && !icon.isEmpty() && !typeBlacklisted ) {
       html += "<div style=\"float:left;\">";
       html += QString::fromLatin1( "<span style=\"white-space:nowrap; border-width: 0px; border-left-width: 5px; border-color: %1; 2px; border-left-style: solid;\">" ).arg( bgColor.name() );

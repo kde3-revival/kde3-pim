@@ -159,6 +159,10 @@ namespace KMail {
         kroupware hacks) */
     void stdChildHandling( partNode * child );
 
+    /** A resource of a multipart/related root (an image it references by
+        @p contentId): to a temporary file, known to the writer, no icon. */
+    void embedRelatedPart( partNode * node, const QString & contentId );
+
     void defaultHandling( partNode * node, ProcessResult & result );
 
     /** 1. Create a new partNode using 'content' data and Content-Description
@@ -215,6 +219,7 @@ namespace KMail {
 
     bool processMultiPartMixedSubtype( partNode * node, ProcessResult & result );
     bool processMultiPartAlternativeSubtype( partNode * node, ProcessResult & result );
+    bool processMultiPartRelatedSubtype( partNode * node, ProcessResult & result );
     bool processMultiPartDigestSubtype( partNode * node, ProcessResult & result );
     bool processMultiPartParallelSubtype( partNode * node, ProcessResult & result );
     bool processMultiPartSignedSubtype( partNode * node, ProcessResult & result );

@@ -34,6 +34,7 @@
 #include "khtmlparthtmlwriter.h"
 
 #include <kdebug.h>
+#include <kurl.h>
 #include <khtml_part.h>
 #include <khtmlview.h>
 
@@ -41,6 +42,8 @@
 #include <dom/html_document.h>
 #include <dom/html_image.h>
 #include <dom/html_misc.h>
+
+#include <qregexp.h>
 
 #include <cassert>
 
@@ -102,10 +105,11 @@ namespace KMail {
 
   void KHtmlPartHtmlWriter::write( const QString & str ) {
     kdWarning( mState != Begun, 5006 ) << "KHtmlPartHtmlWriter: write() called in Ended or Queued state!" << endl;
-    mHtmlPart->write( str );
+    mHtmlPart->write( resolveCidUrls( str ) );
   }
 
-  void KHtmlPartHtmlWriter::queue( const QString & str ) {
+  void KHtmlPartHtmlWriter::queue( const QString & s ) {
+    const QString str = resolveCidUrls( s );
     static const uint chunksize = 16384;
     for ( uint pos = 0 ; pos < str.length() ; pos += chunksize )
       mHtmlQueue.push_back( str.mid( pos, chunksize ) );
@@ -130,6 +134,27 @@ namespace KMail {
   void KHtmlPartHtmlWriter::embedPart( const QCString & contentId,
                                        const QString & contentURL ) {
     mEmbeddedPartMap[QString(contentId)] = contentURL;
+  }
+
+  // The cid: URLs of the parts known when the HTML is written (the
+  // resources of a multipart/related root are known before the root):
+  // also those of style sheets and background attributes, which the
+  // DOM pass at end() does not see.  Only in attribute values and url():
+  // not in text KMail writes (a subject).
+  QString KHtmlPartHtmlWriter::resolveCidUrls( const QString & html ) const {
+    if ( mEmbeddedPartMap.isEmpty() || html.find( "cid:", 0, false ) < 0 )
+      return html;
+    QRegExp cid( "([\"'(=]\\s*)cid:([^\"'\\s>)]+)", false );
+    QString result;
+    int last = 0;
+    for ( int pos = cid.search( html ); pos >= 0; pos = cid.search( html, pos + cid.matchedLength() ) ) {
+      EmbeddedPartMap::const_iterator it = mEmbeddedPartMap.find( KURL::decode_string( cid.cap( 2 ) ) );
+      if ( it == mEmbeddedPartMap.end() )
+        continue;
+      result += html.mid( last, pos - last ) + cid.cap( 1 ) + it.data();
+      last = pos + cid.matchedLength();
+    }
+    return result + html.mid( last );
   }
 
   void KHtmlPartHtmlWriter::resolveCidUrls()

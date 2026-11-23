@@ -65,6 +65,7 @@ namespace KMail {
 
   private:
     void resolveCidUrls();
+    QString resolveCidUrls( const QString & html ) const;
 
   private:
     KHTMLPart * mHtmlPart;
