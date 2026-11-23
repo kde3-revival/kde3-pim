@@ -1370,10 +1370,18 @@ static QString inlineStyleSheets( const QString & html, const QString & baseDir 
   QRegExp url( "url\\(\\s*([^)\"':/\\s]+)\\s*\\)" );
   QString result = html;
   for ( int pos = import.search( result ); pos >= 0; pos = import.search( result, pos ) ) {
+    // not one inside a comment (main.html has one: "maybe @import ...")
+    const int open = result.findRev( "/*", pos );
+    const int close = open >= 0 ? result.find( "*/", open + 2 ) : -1;
+    if ( open >= 0 && ( close < 0 || close > pos ) ) {
+      pos += import.matchedLength();
+      continue;
+    }
     QString file = import.cap( 1 );
     if ( !file.startsWith( "/" ) )
       file = baseDir + "/" + file;
-    QString css = KPIM::kFileToString( file );
+    // a missing style sheet only costs looks: no error dialog
+    QString css = KPIM::kFileToString( file, true, false );
     QString dir = QFileInfo( file ).dirPath( true );
     for ( int u = url.search( css ); u >= 0; u = url.search( css, u ) ) {
       QString replacement = "url(" + dir + "/" + url.cap( 1 ) + ")";
