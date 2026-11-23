@@ -148,6 +148,13 @@ void AddresseeView::enableLinks( int linkMask )
   mLinkMask = linkMask;
 }
 
+// Text of the vCard (it may come with a message) for HTML, also inside
+// a quoted attribute value.
+static QString quoted( const QString & text )
+{
+  return QStyleSheet::escape( text ).replace( '"', "&quot;" );
+}
+
 QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *proxy, LinkMask linkMask,
                                     bool internalLoading, FieldMask fieldMask )
 {
@@ -205,7 +212,7 @@ QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *pro
     if ( pic.isIntern() && !pic.data().isNull() ) {
       image = pixmapAsDataUrl( pic.data() );
     } else if ( !pic.url().isEmpty() ) {
-      image = (pic.url().startsWith( "http://" ) || pic.url().startsWith( "https://" ) ? pic.url() : "http://" + pic.url());
+      image = quoted( pic.url().startsWith( "http://" ) || pic.url().startsWith( "https://" ) ? pic.url() : "http://" + pic.url() );
     } else {
       image = "file:" + KGlobal::iconLoader()->iconPath( "personal", KIcon::Desktop );
     }
@@ -224,7 +231,7 @@ QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *pro
     KABC::PhoneNumber::List phones = addr.phoneNumbers();
     KABC::PhoneNumber::List::ConstIterator phoneIt;
     for ( phoneIt = phones.begin(); phoneIt != phones.end(); ++phoneIt ) {
-      QString number = QStyleSheet::escape( (*phoneIt).number() );
+      QString number = quoted( (*phoneIt).number() );
 
       QString url;
       if ( (*phoneIt).type() & KABC::PhoneNumber::Fax )
@@ -261,7 +268,7 @@ QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *pro
           .arg( QString::fromLatin1( "<a href=\"mailto:%1\">%2</a>" )
           .arg( fullEmail, QStyleSheet::escape( *emailIt ) ) );
       } else {
-        dynamicPart += rowFmtStr.arg( type ).arg( *emailIt );
+        dynamicPart += rowFmtStr.arg( type ).arg( quoted( *emailIt ) );
       }
     }
   }
@@ -272,15 +279,16 @@ QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *pro
       if ( linkMask & URLLinks ) {
         url = (addr.url().url().startsWith( "http://" ) || addr.url().url().startsWith( "https://" ) ? addr.url().prettyURL() :
           "http://" + addr.url().prettyURL());
-        url = KStringHandler::tagURLs( url );
+        url = KStringHandler::tagURLs( quoted( url ) );
       } else {
-        url = addr.url().prettyURL();
+        url = quoted( addr.url().prettyURL() );
       }
       dynamicPart += rowFmtStr.arg( i18n("Homepage") ).arg( url );
     }
 
     QString blog = addr.custom( "KADDRESSBOOK", "BlogFeed" );
     if ( !blog.isEmpty() ) {
+      blog = quoted( blog );
       if ( linkMask & URLLinks ) {
         blog = KStringHandler::tagURLs( blog );
       }
@@ -298,7 +306,7 @@ QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *pro
         formattedAddress = QStyleSheet::escape( (*addrIt).formattedAddress().stripWhiteSpace() );
         formattedAddress = formattedAddress.replace( '\n', "<br>" );
 
-        QString link = "<a href=\"addr:" + (*addrIt).id() + "\">" +
+        QString link = "<a href=\"addr:" + quoted( (*addrIt).id() ) + "\">" +
                        formattedAddress + "</a>";
 
         if ( linkMask & AddressLinks ) {
@@ -311,8 +319,9 @@ QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *pro
             .arg( formattedAddress );
         }
       } else {
-        QString link = "<a href=\"addr:" + (*addrIt).id() + "\">" +
-                       (*addrIt).label().replace( '\n', "<br>" ) + "</a>";
+        const QString label = quoted( (*addrIt).label() ).replace( '\n', "<br>" );
+        QString link = "<a href=\"addr:" + quoted( (*addrIt).id() ) + "\">" +
+                       label + "</a>";
 
         if ( linkMask & AddressLinks ) {
           dynamicPart += rowFmtStr
@@ -321,7 +330,7 @@ QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *pro
         } else {
           dynamicPart += rowFmtStr
             .arg( KABC::Address::typeLabel( (*addrIt).type() ) )
-            .arg( (*addrIt).label().replace( '\n', "<br>" ) );
+            .arg( label );
         }
       }
     }
@@ -371,7 +380,7 @@ QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *pro
           if ( keyIt != titleMap.end() )
             key = keyIt.data();
 
-          customData += rowFmtStr.arg( key ).arg( QStyleSheet::escape( value ) ) ;
+          customData += rowFmtStr.arg( quoted( key ) ).arg( QStyleSheet::escape( value ) ) ;
         }
       }
     }

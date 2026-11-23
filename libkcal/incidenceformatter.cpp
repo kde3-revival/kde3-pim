@@ -716,10 +716,10 @@ static QString invitationDetailsTodo( Todo *todo )
   QString sSummary = i18n( "Summary unspecified" );
   QString sDescr = i18n( "Description unspecified" );
   if ( ! todo->summary().isEmpty() ) {
-    sSummary = todo->summary();
+    sSummary = string2HTML( todo->summary() );
   }
   if ( ! todo->description().isEmpty() ) {
-    sDescr = todo->description();
+    sDescr = string2HTML( todo->description() );
   }
   QString html( "<table border=\"0\" cellpadding=\"1\" cellspacing=\"1\">\n" );
   html += invitationRow( i18n( "Summary:" ), sSummary );
@@ -738,10 +738,10 @@ static QString invitationDetailsJournal( Journal *journal )
   QString sSummary = i18n( "Summary unspecified" );
   QString sDescr = i18n( "Description unspecified" );
   if ( ! journal->summary().isEmpty() ) {
-    sSummary = journal->summary();
+    sSummary = string2HTML( journal->summary() );
   }
   if ( ! journal->description().isEmpty() ) {
-    sDescr = journal->description();
+    sDescr = string2HTML( journal->description() );
   }
   QString html( "<table border=\"0\" cellpadding=\"1\" cellspacing=\"1\">\n" );
   html += invitationRow( i18n( "Summary:" ), sSummary );
@@ -759,7 +759,7 @@ static QString invitationDetailsFreeBusy( FreeBusy *fb )
     return QString::null;
   QString html( "<table border=\"0\" cellpadding=\"1\" cellspacing=\"1\">\n" );
 
-  html += invitationRow( i18n("Person:"), fb->organizer().fullName() );
+  html += invitationRow( i18n("Person:"), string2HTML( fb->organizer().fullName() ) );
   html += invitationRow( i18n("Start date:"), fb->dtStartDateStr() );
   html += invitationRow( i18n("End date:"),
       KGlobal::locale()->formatDate( fb->dtEnd().date(), true ) );
@@ -846,6 +846,9 @@ static QString invitationHeaderEvent( Event *event, ScheduleMessage *msg )
         KPIM::getNameAndMail( attendee->delegator(), delegatorName, dummy );
         if ( delegatorName.isEmpty() )
           delegatorName = attendee->delegator();
+        // names from the invitation: text, not HTML
+        attendeeName = QStyleSheet::escape( attendeeName );
+        delegatorName = QStyleSheet::escape( delegatorName );
 
         switch( attendee->status() ) {
           case Attendee::NeedsAction:
@@ -870,6 +873,7 @@ static QString invitationHeaderEvent( Event *event, ScheduleMessage *msg )
               KPIM::getNameAndMail( attendee->delegate(), delegate, dummy );
               if ( delegate.isEmpty() )
                   delegate = attendee->delegate();
+              delegate = QStyleSheet::escape( delegate );
               if ( !delegate.isEmpty() )
                 return i18n( "%1 has delegated this meeting invitation to %2" )
                     .arg( attendeeName ) .arg( delegate );
@@ -936,6 +940,7 @@ static QString invitationHeaderTodo( Todo *todo, ScheduleMessage *msg )
               KPIM::getNameAndMail( attendee->delegate(), delegate, dummy );
               if ( delegate.isEmpty() )
                 delegate = attendee->delegate();
+              delegate = QStyleSheet::escape( delegate );
               if ( !delegate.isEmpty() )
                 return i18n( "Sender has delegated this request for the task to %1" ).arg( delegate );
               return i18n( "Sender has delegated this request for the task " );
@@ -1164,27 +1169,27 @@ class IncidenceFormatter::IncidenceCompareVisitor :
       if ( !oldInc || !newInc )
         return;
       if ( oldInc->summary() != newInc->summary() )
-        mChanges += i18n( "The summary has been changed to: \"%1\"" ).arg( newInc->summary() );
+        mChanges += i18n( "The summary has been changed to: \"%1\"" ).arg( QStyleSheet::escape( newInc->summary() ) );
       if ( oldInc->location() != newInc->location() )
-        mChanges += i18n( "The location has been changed to: \"%1\"" ).arg( newInc->location() );
+        mChanges += i18n( "The location has been changed to: \"%1\"" ).arg( QStyleSheet::escape( newInc->location() ) );
       if ( oldInc->description() != newInc->description() )
-        mChanges += i18n( "The description has been changed to: \"%1\"" ).arg( newInc->description() );
+        mChanges += i18n( "The description has been changed to: \"%1\"" ).arg( QStyleSheet::escape( newInc->description() ) );
       Attendee::List oldAttendees = oldInc->attendees();
       Attendee::List newAttendees = newInc->attendees();
       for ( Attendee::List::ConstIterator it = newAttendees.constBegin(); it != newAttendees.constEnd(); ++it ) {
         Attendee *oldAtt = oldInc->attendeeByMail( (*it)->email() );
         if ( !oldAtt ) {
-          mChanges += i18n( "Attendee %1 has been added" ).arg( (*it)->fullName() );
+          mChanges += i18n( "Attendee %1 has been added" ).arg( QStyleSheet::escape( (*it)->fullName() ) );
         } else {
           if ( oldAtt->status() != (*it)->status() )
-            mChanges += i18n( "The status of attendee %1 has been changed to: %2" ).arg( (*it)->fullName() )
+            mChanges += i18n( "The status of attendee %1 has been changed to: %2" ).arg( QStyleSheet::escape( (*it)->fullName() ) )
                 .arg( (*it)->statusStr() );
         }
       }
       for ( Attendee::List::ConstIterator it = oldAttendees.constBegin(); it != oldAttendees.constEnd(); ++it ) {
         Attendee *newAtt = newInc->attendeeByMail( (*it)->email() );
         if ( !newAtt )
-          mChanges += i18n( "Attendee %1 has been removed" ).arg( (*it)->fullName() );
+          mChanges += i18n( "Attendee %1 has been removed" ).arg( QStyleSheet::escape( (*it)->fullName() ) );
       }
     }
 

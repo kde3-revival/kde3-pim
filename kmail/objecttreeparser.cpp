@@ -765,7 +765,8 @@ bool ObjectTreeParser::okDecryptMIME( partNode& data,
                           (-1 == cipherStr.find("BEGIN PGP ENCRYPTED MESSAGE", 0, false) ) &&
                           (-1 == cipherStr.find("BEGIN PGP MESSAGE", 0, false) );
     if ( !cipherIsBinary ) {
-      decryptedData = cipherStr;
+      // shown as HTML by the callers: the message's text, quoted
+      decryptedData = ( "<pre>" + KMMessage::quoteHtmlChars( QString::fromLatin1( cipherStr ), false ) + "</pre>" ).utf8();
     }
     else {
       decryptedData = "<div style=\"font-size:x-large; text-align:center;"
@@ -2031,7 +2032,10 @@ static QString writeSimpleSigstatHeader( const PartMetaData &block )
     if ( addr.isEmpty() ) {
       html += i18n( "Signature is valid." );
     } else {
-      html += i18n( "Signed by <a href=\"mailto:%1\">%2</a>." ).arg( addr, name );
+      // from a key or certificate: a mailto: URL and text
+      html += i18n( "Signed by <a href=\"mailto:%1\">%2</a>." )
+              .arg( KMMessage::quoteHtmlChars( KMMessage::encodeMailtoUrl( addr ), true ),
+                    KMMessage::quoteHtmlChars( name, true ) );
     }
   } else {
     // should not happen
@@ -2200,7 +2204,7 @@ QString ObjectTreeParser::writeSigstatHeader( PartMetaData & block,
                     // extra hint for green case
                     // that email addresses in DN do not match fromAddress
                     QString greenCaseWarning;
-                    QString msgFrom( KMMessage::quoteHtmlChars( KPIM::getEmailAddress(fromAddress), true ) );
+                    QString msgFrom( KPIM::getEmailAddress(fromAddress) );
                     QString certificate;
                     if( block.keyId.isEmpty() )
                         certificate = i18n("certificate");
@@ -2218,7 +2222,7 @@ QString ObjectTreeParser::writeSigstatHeader( PartMetaData & block,
                                      "in the %1 used for signing.").arg(certificate) +
                                 "<br />" +
                                 i18n("sender: ") +
-                                msgFrom +
+                                KMMessage::quoteHtmlChars( msgFrom, true ) +
                                 "<br />" +
                                 i18n("stored: ");
                             // We cannot use Qt's join() function here but
@@ -2231,7 +2235,7 @@ QString ObjectTreeParser::writeSigstatHeader( PartMetaData & block,
                                 if( !bStart )
                                     greenCaseWarning.append(", <br />&nbsp; &nbsp;");
                                 bStart = false;
-                                greenCaseWarning.append( KPIM::getEmailAddress(*it) );
+                                greenCaseWarning.append( KMMessage::quoteHtmlChars( KPIM::getEmailAddress(*it), true ) );
                             }
                         }
                     } else {
@@ -2241,7 +2245,7 @@ QString ObjectTreeParser::writeSigstatHeader( PartMetaData & block,
                             "</u> " +
                             i18n("No mail address is stored in the %1 used for signing, "
                                  "so we cannot compare it to the sender's address %2.")
-                            .arg(certificate,msgFrom);
+                            .arg(certificate, KMMessage::quoteHtmlChars( msgFrom, true ));
                     }
                     if( !greenCaseWarning.isEmpty() ) {
                         if( !statusStr.isEmpty() )

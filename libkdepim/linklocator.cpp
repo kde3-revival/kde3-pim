@@ -306,6 +306,7 @@ QString LinkLocator::convertToHtml(const QString& plainText, int flags,
             hyperlink = str;
 
           str = str.replace('&', "&amp;");
+          hyperlink = hyperlink.replace( '&', "&amp;" ).replace( '"', "&quot;" );
           result += "<a href=\"" + hyperlink + "\">" + str + "</a>";
           x += locator.mPos - start;
           continue;
@@ -322,7 +323,9 @@ QString LinkLocator::convertToHtml(const QString& plainText, int flags,
           result.truncate(result.length() - len - (localPart.contains('&')*4));
           x -= len;
 
-          result += "<a href=\"mailto:" + str + "\">" + str + "</a>";
+          const QString quoted = QString( str ).replace( '&', "&amp;" ).replace( '"', "&quot;" )
+                                 .replace( '<', "&lt;" ).replace( '>', "&gt;" );
+          result += "<a href=\"mailto:" + quoted + "\">" + quoted + "</a>";
           x += str.length() - 1;
           continue;
         }

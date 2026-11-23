@@ -160,6 +160,13 @@ namespace KMail {
   void WebKitPartHtmlWriter::forgetLinks() {
     mLinks.clear();
     mLinkSecret = QString::null;
+    // A document still waiting for its load (the previous one) is never
+    // shown now: its links would be minted against the next message's
+    // parts (an event loop can run while KMail writes it).
+    mLoadTimer.stop();
+    mPendingHtml = QString::null;
+    mPendingBodies.clear();
+    mPendingAttachmentList = QString::null;
   }
 
   // 128 bits of the system's random source, hexadecimal; QString::null if

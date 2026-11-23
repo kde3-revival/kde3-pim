@@ -332,7 +332,9 @@ namespace KMail {
     QString result;
 
     for ( const DwField * field = headers.FirstField() ; field ; field = field->Next() ) {
-      result += ( field->FieldNameStr() + ": " ).c_str();
+      // the name too comes with the message (mimelib takes anything before
+      // the colon)
+      result += KMMessage::quoteHtmlChars( QString::fromLatin1( field->FieldNameStr().c_str() ), true ) + ": ";
       result += strToHtml( field->FieldBodyStr().c_str() );
       result += "<br>\n";
     }
@@ -405,9 +407,10 @@ namespace KMail {
         meterBar.setPixel( i, 0, i+1 );
       }
     }
-    // the spam filter's header comes with the message: text in an attribute
+    // the spam filter's header comes with the message: text in an
+    // attribute (its line breaks stay line breaks of the tooltip)
     QString titleText = KMMessage::quoteHtmlChars( i18n("%1% probability of being spam.\n\nFull report:\n%2")
-                     .arg( QString::number( percent ), filterHeader ) );
+                     .arg( QString::number( percent ), filterHeader ), false );
     return QString("<img src=\"%1\" width=\"%2\" height=\"%3\" style=\"border: 1px solid black;\" title=\"%4\"> &nbsp;")
       .arg( imgToDataUrl( meterBar, "PPM" ), QString::number( 20 ),
             QString::number( 5 ), titleText );
