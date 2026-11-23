@@ -362,12 +362,6 @@ namespace {
         return true;
       }
 
-      if ( url.path() == "loadExternal" ) {
-        w->setHtmlLoadExtOverride( !w->htmlLoadExtOverride() );
-        w->update( true );
-        return true;
-      }
-
       if ( url.path() == "goOnline" ) {
         kmkernel->resumeNetworkJobs();
         return true;
@@ -420,8 +414,6 @@ namespace {
     {
       if ( url.path() == "showHTML" )
         return i18n("Turn on HTML rendering for this message.");
-      if ( url.path() == "loadExternal" )
-        return i18n("Load external references from the Internet for this message.");
       if ( url.path() == "goOnline" )
         return i18n("Work online.");
       if ( url.path() == "decryptMessage" )

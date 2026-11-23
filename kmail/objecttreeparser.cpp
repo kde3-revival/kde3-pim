@@ -780,27 +780,7 @@ bool ObjectTreeParser::okDecryptMIME( partNode& data,
   return bDecryptionOk;
 }
 
-  //static
-  bool ObjectTreeParser::containsExternalReferences( const QCString & str )
-  {
-    QRegExp httpRegExp("(\\\"|\\\'|url\\s*\\(\\s*)http[s]?:");
-    int httpPos = str.find( httpRegExp, 0 );
 
-    while ( httpPos >= 0 ) {
-      // look backwards for "href"
-      if ( httpPos > 5 ) {
-        int hrefPos = str.findRev( "href", httpPos - 5, true );
-        // if no 'href' is found or the distance between 'href' and '"http[s]:'
-        // is larger than 7 (7 is the distance in 'href = "http[s]:') then
-        // we assume that we have found an external reference
-        if ( ( hrefPos == -1 ) || ( httpPos - hrefPos > 7 ) )
-          return true;
-      }
-      // find next occurrence of "http: or "https:
-      httpPos = str.find( httpRegExp, httpPos + 6 );
-    }
-    return false;
-  }
 
   bool ObjectTreeParser::processTextHtmlSubtype( partNode * curNode, ProcessResult & ) {
     QCString cstr( curNode->msgPart().bodyDecoded() );
@@ -835,25 +815,10 @@ bool ObjectTreeParser::okDecryptMIME( partNode& data,
         }
         // ---Sven's strip </BODY> and </HTML> from end of attachment end-
       }
-      if ( mReader->htmlMail() ) {
-        // Show the "external references" warning (with possibility to load
-        // external references only if loading external references is disabled
-        // and the HTML code contains obvious external references). For
-        // messages where the external references are obfuscated the user won't
-        // have an easy way to load them but that shouldn't be a problem
-        // because only spam contains obfuscated external references.
-        if ( !mReader->htmlLoadExternal() &&
-             containsExternalReferences( cstr ) ) {
-          htmlWriter()->queue( "<div class=\"htmlWarn\">\n" );
-          htmlWriter()->queue( i18n("<b>Note:</b> This HTML message may contain external "
-                                    "references to images etc. For security/privacy reasons "
-                                    "external references are not loaded. If you trust the "
-                                    "sender of this message then you can load the external "
-                                    "references for this message "
-                                    "<a href=\"kmail:loadExternal\">by clicking here</a>.") );
-          htmlWriter()->queue( "</div><br><br>" );
-        }
-      } else {
+      // External references are loaded only when the user allowed them in
+      // the settings (or for the folder): no per-message link, which one
+      // click could follow by mistake, and which a message could imitate.
+      if ( !mReader->htmlMail() ) {
         htmlWriter()->queue( "<div class=\"htmlWarn\">\n" );
         htmlWriter()->queue( i18n("<b>Note:</b> This is an HTML message. For "
                                   "security reasons, only the raw HTML code "
