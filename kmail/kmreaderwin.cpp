@@ -1363,21 +1363,39 @@ QString KMReaderWin::newFeaturesMD5()
 
 //-----------------------------------------------------------------------------
 // An image of KDE's about pages (a file next to their style sheets) as a
-// data: URL: KMail's WebKit document takes data: images only.  Local files
-// of KDE's data directories, PNG/JPEG/GIF, at most 256 KB; anything else
-// is dropped (an image less).
-static QString aboutImageDataUrl( const QString & path )
+// data: URL: KMail's WebKit document takes data: images only.  A regular
+// file (not a symbolic link) directly in the style sheet's directory
+// @p dir (both resolved), PNG/JPEG/GIF, at most 256 KB; anything else is
+// dropped (an image less).
+static QString aboutImageDataUrl( const QString & dir, const QString & name )
 {
+  static const Q_ULONG limit = 256 * 1024;
+  const QString path = dir + "/" + name;
   QFileInfo fi( path );
   const QString ext = fi.extension( false ).lower();
   const char * type = ext == "png" ? "image/png" : ( ext == "jpg" || ext == "jpeg" ) ? "image/jpeg"
                       : ext == "gif" ? "image/gif" : 0;
-  if ( !type || !fi.isFile() || fi.size() > 256 * 1024 )
+  if ( !type || fi.isSymLink() || !fi.isFile() )
+    return QString::null;
+  char * realFile = realpath( QFile::encodeName( path ).data(), 0 );
+  char * realDir = realpath( QFile::encodeName( dir ).data(), 0 );
+  const bool inDir = realFile && realDir
+                     && QFileInfo( QFile::decodeName( realFile ) ).dirPath( true ) == QFile::decodeName( realDir );
+  free( realFile );
+  free( realDir );
+  if ( !inDir )
     return QString::null;
   QFile f( path );
   if ( !f.open( IO_ReadOnly ) )
     return QString::null;
-  return QString::fromLatin1( "data:%1;base64," ).arg( type ) + QString::fromLatin1( KCodecs::base64Encode( f.readAll() ) );
+  // at most the limit: one byte more means too large (also a file that
+  // grew since)
+  QByteArray data( limit + 1 );
+  const Q_LONG n = f.readBlock( data.data(), limit + 1 );
+  if ( n < 0 || (Q_ULONG)n > limit )
+    return QString::null;
+  data.resize( n );
+  return QString::fromLatin1( "data:%1;base64," ).arg( type ) + QString::fromLatin1( KCodecs::base64Encode( data ) );
 }
 
 // The about page (main.html, XHTML) for KMail's WebKit document:
@@ -1386,7 +1404,7 @@ static QString aboutImageDataUrl( const QString & path )
 //   document);
 // - <div .../> written as <div ...></div>: HTML has no self-closing
 //   <div>; an HTML parser (WebKit's) leaves it open and the rest of the
-//   page lands inside it (KHTML closed it).
+//   page lands inside it (KHTML's parser closed it).
 static QString aboutPageForWebKit( const QString & html, const QString & baseDir )
 {
   QRegExp import( "@import\\s*\"([^\"]+)\"\\s*;" );
@@ -1407,7 +1425,7 @@ static QString aboutPageForWebKit( const QString & html, const QString & baseDir
     QString css = KPIM::kFileToString( file, true, false );
     QString dir = QFileInfo( file ).dirPath( true );
     for ( int u = url.search( css ); u >= 0; u = url.search( css, u ) ) {
-      const QString data = aboutImageDataUrl( dir + "/" + url.cap( 1 ) );
+      const QString data = aboutImageDataUrl( dir, url.cap( 1 ) );
       QString replacement = data.isEmpty() ? QString::fromLatin1( "none" ) : "url(" + data + ")";
       css.replace( u, url.matchedLength(), replacement );
       u += replacement.length();

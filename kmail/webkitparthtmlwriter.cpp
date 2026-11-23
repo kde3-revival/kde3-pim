@@ -276,11 +276,13 @@ namespace KMail {
     QString index_html = dir + "/index.html";
     // KMail's style sheet (KHTML's user style sheet) in the head of
     // KMail's document only.
-    // KMail's document has no doctype (quirks mode, as with KHTML), and
-    // WebKit's quirks give tables font-size: medium and normal fonts
-    // instead of inheriting them (KHTML does not): the fields of the fancy
-    // header, the attachment table were larger than the rest.  Inherited
-    // as in standards mode; KMail's own rules come after.
+    // KMail's document is in quirks mode (its HTML 4.01 doctype has no
+    // system identifier).  Quirks mode resets the font size, weight, line
+    // height and white-space of tables (WebKit's and KHTML's quirks style
+    // sheets both do); the fancy header's fields and the attachment table
+    // are table cells, the subject is not.  With WebKit the fields were
+    // reported larger than the subject: tables inherit them here, as in
+    // standards mode; KMail's own rules come after.
     QString style = "<style type=\"text/css\">\n"
                     "table { font-size: inherit; font-weight: inherit; font-style: inherit; "
                     "font-variant: inherit; line-height: inherit; white-space: inherit; }\n"
