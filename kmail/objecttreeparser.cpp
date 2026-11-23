@@ -1121,6 +1121,55 @@ namespace KMail {
   }
 
   namespace {
+    inline uint be16( const QByteArray & d, uint i ) { return ( (uchar)d[i] << 8 ) | (uchar)d[i + 1]; }
+    inline uint be32( const QByteArray & d, uint i ) { return ( be16( d, i ) << 16 ) | be16( d, i + 2 ); }
+    inline uint le16( const QByteArray & d, uint i ) { return (uchar)d[i] | ( (uchar)d[i + 1] << 8 ); }
+    inline uint le32( const QByteArray & d, uint i ) { return le16( d, i ) | ( le16( d, i + 2 ) << 16 ); }
+
+    // The dimensions of a PNG, JPEG, GIF or BMP from its header (what the
+    // decoder allocates for); false if they cannot be read.
+    bool imageDimensions( const QByteArray & d, uint & width, uint & height ) {
+      const uint n = d.size();
+      if ( n >= 24 && (uchar)d[0] == 0x89 && d[1] == 'P' && d[2] == 'N' && d[3] == 'G'
+           && d[12] == 'I' && d[13] == 'H' && d[14] == 'D' && d[15] == 'R' ) {
+        width = be32( d, 16 );
+        height = be32( d, 20 );
+        return true;
+      }
+      if ( n >= 10 && d[0] == 'G' && d[1] == 'I' && d[2] == 'F' ) {
+        width = le16( d, 6 );
+        height = le16( d, 8 );
+        return true;
+      }
+      if ( n >= 26 && d[0] == 'B' && d[1] == 'M' ) {
+        width = le32( d, 18 );
+        const int h = (int)le32( d, 22 );
+        height = h < 0 ? -h : h;
+        return true;
+      }
+      if ( n >= 4 && (uchar)d[0] == 0xFF && (uchar)d[1] == 0xD8 ) {
+        // the frame header (SOFn), segment by segment
+        uint i = 2;
+        while ( i + 9 < n ) {
+          if ( (uchar)d[i] != 0xFF )
+            return false;
+          const uchar marker = d[i + 1];
+          if ( marker == 0xFF ) { ++i; continue; }
+          if ( marker == 0xD8 || marker == 0x01 || ( marker >= 0xD0 && marker <= 0xD7 ) ) { i += 2; continue; }
+          const uint length = be16( d, i + 2 );
+          if ( marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC ) {
+            height = be16( d, i + 5 );
+            width = be16( d, i + 7 );
+            return true;
+          }
+          if ( length < 2 )
+            return false;
+          i += 2 + length;
+        }
+      }
+      return false;
+    }
+
     // The images a shown HTML part can use by Content-ID: the parts of
     // its scope (see embedRelatedResources()).
     class ScopeResolver : public CidResolver {
@@ -1133,12 +1182,16 @@ namespace KMail {
         if ( it == mParts.end() || !it.data() )
           return QString::null;   // none, ambiguous, or not one to embed
         partNode * part = it.data();
+        if ( mReader->embeddingFailed( part ) )
+          return QString::null;   // tried once: stays an attachment
         QString url = mReader->embeddedResourceURL( part );
         if ( url.isEmpty() ) {
           url = makeURL( part );
           // kept for the message: within the bound
-          if ( url.isEmpty() || !mReader->useEmbeddedBytes( url.length() ) )
+          if ( url.isEmpty() || !mReader->useEmbeddedBytes( url.length() ) ) {
+            mReader->setEmbeddingFailed( part );
             return QString::null;   // stays an attachment
+          }
           mReader->addEmbeddedResource( part, url );
         }
         // every reference is a copy (data: URLs): within the bound too
@@ -1170,12 +1223,19 @@ namespace KMail {
           return QString::null;
         // a data: URL is at most 4/3 of the decoded size, which is at most
         // the encoded size (base64, quoted-printable)
-        const unsigned int estimate = part->msgPart().body().size() / 3 * 4 + 64;
+        const unsigned int estimate = part->msgPart().encodedSize() / 3 * 4 + 64;
         if ( !mReader->mayUseEmbeddedBytes( 2 * estimate ) )
           return QString::null;
         const QByteArray data = part->msgPart().bodyDecodedBinary();
+        // the bitmap the decoder allocates, from the header, before
+        // decoding: at most 64 MB (16 megapixels of 32 bits)
+        uint width = 0, height = 0;
+        if ( data.isEmpty() || !imageDimensions( data, width, height )
+             || width == 0 || height == 0 || width > 65535 || height > 65535
+             || (unsigned long long)width * height * 4 > 64ULL * 1024 * 1024 )
+          return QString::null;
         QImage image;
-        if ( data.isEmpty() || !image.loadFromData( data ) )
+        if ( !image.loadFromData( data ) )
           return QString::null;
         if ( mIsolated )
           return "data:image/" + subtype + ";base64," + QString::fromLatin1( KCodecs::base64Encode( data ) );
@@ -1200,7 +1260,11 @@ namespace KMail {
   // of another scope.  A Content-ID two children of the scope share is
   // nobody's; a part that cannot be embedded (not an image of a known
   // format that decodes, not loaded, beyond the bound) stays an
-  // attachment, and so does one only CSS or a hidden image references.
+  // attachment, and so does one only CSS or an image hidden by its own
+  // attributes references.  An image hidden by an ancestor or a style
+  // sheet (display:none around it) is not detected: its part is hidden
+  // from the attachment list all the same (accepted: it stays in the MIME
+  // tree).
   // A scope's Content-IDs are collected once per message (the reader).
   QString ObjectTreeParser::embedRelatedResources( partNode * htmlNode, const QString & html ) {
     if ( !mReader || !htmlWriter() )
@@ -1213,7 +1277,7 @@ namespace KMail {
       if ( p->type() == DwMime::kTypeMessage )
         break;
       if ( p->type() == DwMime::kTypeMultipart && p->subType() == DwMime::kSubtypeRelated ) {
-        if ( child == p->relatedRoot() )
+        if ( child == mReader->relatedRootOf( p ) )
           scope = p;
         break;   // the nearest related only
       }

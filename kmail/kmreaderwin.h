@@ -106,6 +106,11 @@ public:
       children share, and for the related root, multiparts and messages.
       Collected once per message. */
   const QMap<QString, partNode *> & embeddingScope( partNode * scope );
+  /** partNode::relatedRoot(), once per message. */
+  partNode * relatedRootOf( partNode * related );
+  /** An image that could not be embedded (tried once per message). */
+  bool embeddingFailed( partNode * node ) const { return mFailedResources.contains( node ); }
+  void setEmbeddingFailed( partNode * node ) { mFailedResources[node] = true; }
 
   KMReaderWin( QWidget *parent,
 	       QWidget *mainWindow,
@@ -525,6 +530,8 @@ private:
   QMap<partNode *, bool> mHiddenResources;
   unsigned int mEmbeddedBytes;
   QMap<partNode *, QMap<QString, partNode *> > mEmbeddingScopes;
+  QMap<partNode *, partNode *> mRelatedRoots;
+  QMap<partNode *, bool> mFailedResources;
   void forgetEmbeddedResources();
   KMMessage *mMessage;
   // widgets:

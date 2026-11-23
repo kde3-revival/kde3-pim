@@ -1909,13 +1909,21 @@ bool KMReaderWin::useEmbeddedBytes( unsigned int bytes )
   return true;
 }
 
+partNode * KMReaderWin::relatedRootOf( partNode * related )
+{
+  QMap<partNode *, partNode *>::ConstIterator it = mRelatedRoots.find( related );
+  if ( it != mRelatedRoots.end() )
+    return it.data();
+  return mRelatedRoots[related] = related->relatedRoot();
+}
+
 const QMap<QString, partNode *> & KMReaderWin::embeddingScope( partNode * scope )
 {
   QMap<partNode *, QMap<QString, partNode *> >::Iterator found = mEmbeddingScopes.find( scope );
   if ( found != mEmbeddingScopes.end() )
     return found.data();
   QMap<QString, partNode *> & parts = mEmbeddingScopes[scope];
-  const partNode * root = scope->relatedRoot();
+  const partNode * root = relatedRootOf( scope );
   for ( partNode * child = scope->firstChild(); child; child = child->nextSibling() ) {
     const QString id = child->contentIdNoBrackets();
     if ( id.isEmpty() )
@@ -1933,6 +1941,8 @@ void KMReaderWin::forgetEmbeddedResources()
   mEmbeddedResources.clear();
   mHiddenResources.clear();
   mEmbeddingScopes.clear();
+  mRelatedRoots.clear();
+  mFailedResources.clear();
   mEmbeddedBytes = 0;
 }
 
