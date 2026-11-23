@@ -1362,9 +1362,32 @@ QString KMReaderWin::newFeaturesMD5()
 }
 
 //-----------------------------------------------------------------------------
-// @import "file"; of the about page: the style sheet itself, its images
-// with absolute paths (relative ones are relative to the style sheet).
-static QString inlineStyleSheets( const QString & html, const QString & baseDir )
+// An image of KDE's about pages (a file next to their style sheets) as a
+// data: URL: KMail's WebKit document takes data: images only.  Local files
+// of KDE's data directories, PNG/JPEG/GIF, at most 256 KB; anything else
+// is dropped (an image less).
+static QString aboutImageDataUrl( const QString & path )
+{
+  QFileInfo fi( path );
+  const QString ext = fi.extension( false ).lower();
+  const char * type = ext == "png" ? "image/png" : ( ext == "jpg" || ext == "jpeg" ) ? "image/jpeg"
+                      : ext == "gif" ? "image/gif" : 0;
+  if ( !type || !fi.isFile() || fi.size() > 256 * 1024 )
+    return QString::null;
+  QFile f( path );
+  if ( !f.open( IO_ReadOnly ) )
+    return QString::null;
+  return QString::fromLatin1( "data:%1;base64," ).arg( type ) + QString::fromLatin1( KCodecs::base64Encode( f.readAll() ) );
+}
+
+// The about page (main.html, XHTML) for KMail's WebKit document:
+// - @import "file"; replaced by the style sheet, its url(image) by data:
+//   URLs (relative to the style sheet; WebKit reads nothing but the
+//   document);
+// - <div .../> written as <div ...></div>: HTML has no self-closing
+//   <div>; an HTML parser (WebKit's) leaves it open and the rest of the
+//   page lands inside it (KHTML closed it).
+static QString aboutPageForWebKit( const QString & html, const QString & baseDir )
 {
   QRegExp import( "@import\\s*\"([^\"]+)\"\\s*;" );
   QRegExp url( "url\\(\\s*([^)\"':/\\s]+)\\s*\\)" );
@@ -1384,12 +1407,19 @@ static QString inlineStyleSheets( const QString & html, const QString & baseDir 
     QString css = KPIM::kFileToString( file, true, false );
     QString dir = QFileInfo( file ).dirPath( true );
     for ( int u = url.search( css ); u >= 0; u = url.search( css, u ) ) {
-      QString replacement = "url(" + dir + "/" + url.cap( 1 ) + ")";
+      const QString data = aboutImageDataUrl( dir + "/" + url.cap( 1 ) );
+      QString replacement = data.isEmpty() ? QString::fromLatin1( "none" ) : "url(" + data + ")";
       css.replace( u, url.matchedLength(), replacement );
       u += replacement.length();
     }
     result.replace( pos, import.matchedLength(), css );
     pos += css.length();
+  }
+  QRegExp selfClosing( "<(div|span)(\\s[^<>]*)?/>" );
+  for ( int pos = selfClosing.search( result ); pos >= 0; pos = selfClosing.search( result, pos ) ) {
+    const QString replacement = "<" + selfClosing.cap( 1 ) + selfClosing.cap( 2 ) + "></" + selfClosing.cap( 1 ) + ">";
+    result.replace( pos, selfClosing.matchedLength(), replacement );
+    pos += replacement.length();
   }
   return result;
 }
@@ -1417,7 +1447,7 @@ void KMReaderWin::displaySplashPage( const QString &info )
     // WebKit reads nothing but the document and images: the style sheets
     // go into it.
     htmlWriter()->begin( QString::null );
-    htmlWriter()->write( inlineStyleSheets( content, QFileInfo( location ).dirPath( true ) ) );
+    htmlWriter()->write( aboutPageForWebKit( content, QFileInfo( location ).dirPath( true ) ) );
     htmlWriter()->end();
     return;
   }
