@@ -114,6 +114,7 @@ using KMail::TeeHtmlWriter;
 #include <kurldrag.h>
 
 #include <qclipboard.h>
+#include <qfileinfo.h>
 #include <qvariant.h>
 #include <qhbox.h>
 #include <qtextcodec.h>
@@ -1361,6 +1362,31 @@ QString KMReaderWin::newFeaturesMD5()
 }
 
 //-----------------------------------------------------------------------------
+// @import "file"; of the about page: the style sheet itself, its images
+// with absolute paths (relative ones are relative to the style sheet).
+static QString inlineStyleSheets( const QString & html, const QString & baseDir )
+{
+  QRegExp import( "@import\\s*\"([^\"]+)\"\\s*;" );
+  QRegExp url( "url\\(\\s*([^)\"':/\\s]+)\\s*\\)" );
+  QString result = html;
+  for ( int pos = import.search( result ); pos >= 0; pos = import.search( result, pos ) ) {
+    QString file = import.cap( 1 );
+    if ( !file.startsWith( "/" ) )
+      file = baseDir + "/" + file;
+    QString css = KPIM::kFileToString( file );
+    QString dir = QFileInfo( file ).dirPath( true );
+    for ( int u = url.search( css ); u >= 0; u = url.search( css, u ) ) {
+      QString replacement = "url(" + dir + "/" + url.cap( 1 ) + ")";
+      css.replace( u, url.matchedLength(), replacement );
+      u += replacement.length();
+    }
+    result.replace( pos, import.matchedLength(), css );
+    pos += css.length();
+  }
+  return result;
+}
+
+//-----------------------------------------------------------------------------
 void KMReaderWin::displaySplashPage( const QString &info )
 {
   mMsgDisplay = false;
@@ -1374,13 +1400,22 @@ void KMReaderWin::displaySplashPage( const QString &info )
   else
     content = content.arg( "" );
 
-  mViewer->begin(KURL( location ));
-
   QString fontSize = QString::number( pointsToPixel( mCSSHelper->bodyFont().pointSize() ) );
   QString appTitle = i18n("KMail");
   QString catchPhrase = ""; //not enough space for a catch phrase at default window size i18n("Part of the Kontact Suite");
   QString quickDescription = i18n("The email client for the K Desktop Environment.");
-  mViewer->write(content.arg(fontSize).arg(appTitle).arg(catchPhrase).arg(quickDescription).arg(info));
+  content = content.arg(fontSize).arg(appTitle).arg(catchPhrase).arg(quickDescription).arg(info);
+  if ( mWebWriter ) {
+    // WebKit reads nothing but the document and images: the style sheets
+    // go into it.
+    htmlWriter()->begin( QString::null );
+    htmlWriter()->write( inlineStyleSheets( content, QFileInfo( location ).dirPath( true ) ) );
+    htmlWriter()->end();
+    return;
+  }
+
+  mViewer->begin(KURL( location ));
+  mViewer->write( content );
   mViewer->end();
 }
 
@@ -1834,6 +1869,11 @@ void KMReaderWin::showVCard( KMMessagePart * msgPart ) {
 void KMReaderWin::printMsg()
 {
   if (!message()) return;
+  if ( mWebPart ) {
+    // The part cannot print (yet): KHTML prints, as before the part.
+    useKHTML();
+    updateReaderWin();
+  }
   mViewer->view()->print();
 }
 
@@ -2098,12 +2138,24 @@ void KMReaderWin::slotHandleAttachment( int choice )
 //-----------------------------------------------------------------------------
 void KMReaderWin::slotFind()
 {
+  if ( mWebPart ) {
+    KAction * find = mWebPart->actionCollection()->action( "find" );
+    if ( find )
+      find->activate();
+    return;
+  }
   mViewer->findText();
 }
 
 //-----------------------------------------------------------------------------
 void KMReaderWin::slotFindNext()
 {
+  if ( mWebPart ) {
+    KAction * next = mWebPart->actionCollection()->action( "findNext" );
+    if ( next )
+      next->activate();
+    return;
+  }
   mViewer->findTextNext();
 }
 
@@ -2182,8 +2234,13 @@ void KMReaderWin::setMsgPart( KMMessagePart* aMsgPart, bool aHTML,
       htmlWriter()->queue( mCSSHelper->htmlHead( isFixedFont() ) );
 
       if (aHTML && (kasciistricmp(aMsgPart->subtypeStr(), "html")==0)) { // HTML
-        // ### this is broken. It doesn't stip off the HTML header and footer!
-        htmlWriter()->queue( aMsgPart->bodyToUnicode( overrideCodec() ) );
+        if ( htmlWriter()->isolatesHtml() )
+          // WebKit: a document of its own, as the HTML parts of a message
+          // (sanitized, no scripts, nothing remote unless allowed).
+          htmlWriter()->queueIsolatedHtml( aMsgPart->bodyToUnicode( overrideCodec() ) );
+        else
+          // ### this is broken. It doesn't stip off the HTML header and footer!
+          htmlWriter()->queue( aMsgPart->bodyToUnicode( overrideCodec() ) );
         mColorBar->setHtmlMode();
       } else { // plain text
         const QCString str = aMsgPart->bodyDecoded();
@@ -2396,6 +2453,9 @@ void KMReaderWin::slotScrollDown()
 
 bool KMReaderWin::atBottom() const
 {
+    if ( mWebPart )
+      // as the part's script last reported it
+      return mWebPart->property( "mailAtBottom" ).toBool();
     const QScrollView *view = static_cast<const QScrollView *>(mViewer->widget());
     return view->contentsY() + view->visibleHeight() >= view->contentsHeight();
 }
@@ -2460,6 +2520,8 @@ void KMReaderWin::selectAll()
 //-----------------------------------------------------------------------------
 QString KMReaderWin::copyText()
 {
+  if ( mWebPart )
+    return mWebPart->property( "mailSelectedText" ).toString();
   QString temp = mViewer->selectedText();
   return temp;
 }
@@ -2508,6 +2570,11 @@ bool KMReaderWin::htmlLoadExternal()
 //-----------------------------------------------------------------------------
 void KMReaderWin::saveRelativePosition()
 {
+  if ( mWebPart ) {
+    // not kept with WebKit (yet): the message shows from its top
+    mSavedRelativePosition = 0;
+    return;
+  }
   const QScrollView * scrollview = static_cast<QScrollView *>( mViewer->widget() );
   mSavedRelativePosition =
     static_cast<float>( scrollview->contentsY() ) / scrollview->contentsHeight();
@@ -2741,6 +2808,21 @@ bool KMReaderWin::decryptMessage() const
   if ( !GlobalSettings::self()->alwaysDecrypt() )
     return mDecrytMessageOverwrite;
   return true;
+}
+
+void KMReaderWin::useKHTML()
+{
+  if ( !mWebPart )
+    return;
+  if ( mHtmlWriter == mWebWriter )
+    mHtmlWriter = 0;
+  delete mWebWriter;
+  mWebWriter = 0;
+  delete mWebPart;
+  mWebPart = 0;
+  mViewer->widget()->show();
+  mBox->setStretchFactor( mViewer->widget(), 1 );
+  mHtmlWriter = new KHtmlPartHtmlWriter( mViewer, 0 );
 }
 
 void KMReaderWin::slotHideEmptyReaderParts()

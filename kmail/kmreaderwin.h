@@ -489,6 +489,8 @@ private:
   QString renderAttachments( partNode *node, const QColor &bgColor );
   /** The attachment list of the header (KMail's <div id="attachmentInjectionPoint">). */
   QString attachmentListHtml();
+  /** WebKit -> KHTML (printing). */
+  void useKHTML();
 
 private:
   bool mHtmlMail, mHtmlLoadExternal, mHtmlOverride, mHtmlLoadExtOverride;

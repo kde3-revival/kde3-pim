@@ -83,6 +83,28 @@ static void removeDirectory( const QString & dir )
   ::rmdir( QFile::encodeName( dir ).data() );
 }
 
+// A regular file in KDE's directory of temporary files (KMail's
+// KTempFile files), not one of our message directories.
+static bool isTemporaryFile( const QString & path )
+{
+  static QString tmp;
+  if ( tmp.isEmpty() ) {
+    char * real = realpath( QFile::encodeName( KGlobal::dirs()->saveLocation( "tmp" ) ).data(), 0 );
+    if ( !real )
+      return false;
+    tmp = QFile::decodeName( real ) + "/";
+    free( real );
+  }
+  char * real = realpath( QFile::encodeName( path ).data(), 0 );
+  if ( !real )
+    return false;
+  QString file = QFile::decodeName( real );
+  free( real );
+  struct stat st;
+  return file.startsWith( tmp ) && !file.mid( tmp.length() ).startsWith( "kmail-webkit-" )
+         && ::stat( QFile::encodeName( file ).data(), &st ) == 0 && S_ISREG( st.st_mode );
+}
+
 namespace KMail {
 
   WebKitPartHtmlWriter::WebKitPartHtmlWriter( KParts::ReadOnlyPart * part, QObject * parent, const char * name )
@@ -235,11 +257,17 @@ namespace KMail {
     if ( !mPendingAttachmentList.isEmpty() )
       html.replace( "<div id=\"attachmentInjectionPoint\"></div>",
                     "<div id=\"attachmentInjectionPoint\">" + mPendingAttachmentList + "</div>" );
-    // src="file:..." (KMail's temporary files): into the directory.
+    // src="file:..." of KMail's document: KMail's temporary files (inline
+    // images, attachments shown as images) into the directory; anything
+    // else becomes a path the part serves or refuses (KDE's icons are
+    // served).  No file of the user's gets into the message: the message's
+    // own HTML (also an HTML attachment viewed) is never in this document,
+    // it is a document of its own (queueIsolatedHtml()).
     QRegExp fileSrc( "src=\"file:([^\"]*)\"" );
     int index = 0;
     for ( int pos = fileSrc.search( html ); pos >= 0; pos = fileSrc.search( html, pos ) ) {
-      QString target = linkIntoMessage( dir, KURL::decode_string( fileSrc.cap( 1 ) ), index++ );
+      QString path = KURL::decode_string( fileSrc.cap( 1 ) );
+      QString target = isTemporaryFile( path ) ? linkIntoMessage( dir, path, index++ ) : path;
       QString replacement = "src=\"" + KURL::encode_string( target ) + "\"";
       html.replace( pos, fileSrc.matchedLength(), replacement );
       pos += replacement.length();
