@@ -212,7 +212,7 @@ QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *pro
     if ( pic.isIntern() && !pic.data().isNull() ) {
       image = pixmapAsDataUrl( pic.data() );
     } else if ( !pic.url().isEmpty() ) {
-      image = quoted( pic.url().startsWith( "http://" ) || pic.url().startsWith( "https://" ) ? pic.url() : "http://" + pic.url() );
+      image = pic.url().startsWith( "http://" ) || pic.url().startsWith( "https://" ) ? pic.url() : "http://" + pic.url();
     } else {
       image = "file:" + KGlobal::iconLoader()->iconPath( "personal", KIcon::Desktop );
     }
@@ -417,10 +417,8 @@ QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *pro
         // append our status to the rest of the dynamic part of the addressee
         dynamicPart += rowFmtStr
                 .arg( i18n( "Presence" ) )
-                .arg( imStatus
-                          .arg( imgSrc )
-                          .arg( proxy->presenceString( addr.uid() ) )
-                    );
+                .arg( imStatus.arg( quoted( imgSrc ),
+                                    QStyleSheet::escape( proxy->presenceString( addr.uid() ) ) ) );
       }
     }
   }
@@ -441,7 +439,7 @@ QString AddresseeView::vCardAsHTML( const KABC::Addressee& addr, ::KIMProxy *pro
   strAddr.append( QString::fromLatin1(
     "<img src=\"%1\" width=\"50\" vspace=\"1\">" // image
     "</td>")
-    .arg( image ) );
+    .arg( quoted( image ) ) );
   strAddr.append( QString::fromLatin1(
     "<td align=\"left\" width=\"70%\" %2>")
     .arg( cellStyle2 ) );

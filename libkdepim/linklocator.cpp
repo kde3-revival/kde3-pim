@@ -325,7 +325,19 @@ QString LinkLocator::convertToHtml(const QString& plainText, int flags,
 
           const QString quoted = QString( str ).replace( '&', "&amp;" ).replace( '"', "&quot;" )
                                  .replace( '<', "&lt;" ).replace( '>', "&gt;" );
-          result += "<a href=\"mailto:" + quoted + "\">" + quoted + "</a>";
+          // the address as a URL (#, ?, % are delimiters there), then
+          // for the attribute
+          QString target;
+          const QCString utf8 = str.utf8();
+          for ( uint k = 0; k < utf8.length(); ++k ) {
+            const unsigned char c = utf8[k];
+            if ( ( c >= 'a' && c <= 'z' ) || ( c >= 'A' && c <= 'Z' ) || ( c >= '0' && c <= '9' )
+                 || c == '@' || c == '.' || c == '-' || c == '_' || c == '+' )
+              target += QChar( c );
+            else
+              target += QString().sprintf( "%%%02X", c );
+          }
+          result += "<a href=\"mailto:" + target + "\">" + quoted + "</a>";
           x += str.length() - 1;
           continue;
         }

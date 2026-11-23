@@ -409,8 +409,9 @@ namespace KMail {
     }
     // the spam filter's header comes with the message: text in an
     // attribute (its line breaks stay line breaks of the tooltip)
-    QString titleText = KMMessage::quoteHtmlChars( i18n("%1% probability of being spam.\n\nFull report:\n%2")
-                     .arg( QString::number( percent ), filterHeader ), false );
+    QString titleText = i18n("%1% probability of being spam.\n\nFull report:\n%2")
+                     .arg( QString::number( percent ), filterHeader );
+    titleText.replace( '&', "&amp;" ).replace( '"', "&quot;" ).replace( '<', "&lt;" ).replace( '>', "&gt;" );
     return QString("<img src=\"%1\" width=\"%2\" height=\"%3\" style=\"border: 1px solid black;\" title=\"%4\"> &nbsp;")
       .arg( imgToDataUrl( meterBar, "PPM" ), QString::number( 20 ),
             QString::number( 5 ), titleText );

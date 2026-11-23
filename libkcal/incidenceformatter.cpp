@@ -62,6 +62,13 @@ using namespace KCal;
  *  Helper functions for the extensive display (event viewer)
  *******************************************************************/
 
+// Text of an incidence (it may come with a message) inside a quoted
+// attribute value.
+static QString attributeText( const QString & text )
+{
+  return QStyleSheet::escape( text ).replace( '"', "&quot;" );
+}
+
 static QString eventViewerAddLink( const QString &ref, const QString &text,
                              bool newline = true )
 {
@@ -119,12 +126,12 @@ static QString linkPerson( const QString& email, QString name, QString uid )
     // There is a UID, so make a link to the addressbook
     if ( name.isEmpty() )
       // Use the email address for text
-      tmpString += eventViewerAddLink( "uid:" + uid, email );
+      tmpString += eventViewerAddLink( "uid:" + attributeText( uid ), QStyleSheet::escape( email ) );
     else
-      tmpString += eventViewerAddLink( "uid:" + uid, name );
+      tmpString += eventViewerAddLink( "uid:" + attributeText( uid ), QStyleSheet::escape( name ) );
   } else {
     // No UID, just show some text
-    tmpString += ( name.isEmpty() ? email : name );
+    tmpString += QStyleSheet::escape( name.isEmpty() ? email : name );
   }
   tmpString += '\n';
 
@@ -134,7 +141,7 @@ static QString linkPerson( const QString& email, QString name, QString uid )
     KURL mailto;
     mailto.setProtocol( "mailto" );
     mailto.setPath( person.fullName() );
-    tmpString += eventViewerAddLink( mailto.url(), QString::null );
+    tmpString += eventViewerAddLink( attributeText( mailto.url() ), QString::null );
   }
   tmpString += "</li>\n";
 
@@ -185,8 +192,8 @@ static QString eventViewerFormatAttachments( Incidence *i )
         if ( (*it)->uri().startsWith( "kmail:" ) )
           name = i18n( "Show mail" );
         else
-          name = (*it)->uri();
-        tmpStr += eventViewerAddLink( (*it)->uri(), name );
+          name = QStyleSheet::escape( (*it)->uri() );
+        tmpStr += eventViewerAddLink( attributeText( (*it)->uri() ), name );
         tmpStr += "<br>";
       }
     }
@@ -265,7 +272,7 @@ static QString eventViewerFormatHeader( Incidence *incidence )
 
   tmpStr += "<td>"
             + eventViewerAddTag( "u",
-                                 eventViewerAddTag( "b", incidence->summary() ) )
+                                 eventViewerAddTag( "b", QStyleSheet::escape( incidence->summary() ) ) )
             + "</td>";
   tmpStr += "</tr></table><br>";
 
@@ -325,14 +332,14 @@ static QString eventViewerFormatEvent( Event *event )
   if ( !event->description().isEmpty() ) {
     tmpStr += "<tr>";
     tmpStr += "<td align=\"right\"><b>" + i18n( "Description" ) + "</b></td>";
-    tmpStr += "<td>" + eventViewerAddTag( "p", event->description() ) + "</td>";
+    tmpStr += "<td>" + eventViewerAddTag( "p", QStyleSheet::escape( event->description() ) ) + "</td>";
     tmpStr += "</tr>";
   }
 
   if ( !event->location().isEmpty() ) {
     tmpStr += "<tr>";
     tmpStr += "<td align=\"right\"><b>" + i18n( "Location" ) + "</b></td>";
-    tmpStr += "<td>" + event->location() + "</td>";
+    tmpStr += "<td>" + QStyleSheet::escape( event->location() ) + "</td>";
     tmpStr += "</tr>";
   }
 
@@ -404,14 +411,14 @@ static QString eventViewerFormatTodo( Todo *todo )
   if ( !todo->description().isEmpty() ) {
     tmpStr += "<tr>";
     tmpStr += "<td align=\"right\"><b>" + i18n( "Description" ) + "</b></td>";
-    tmpStr += "<td>" + todo->description() + "</td>";
+    tmpStr += "<td>" + QStyleSheet::escape( todo->description() ) + "</td>";
     tmpStr += "</tr>";
   }
 
   if ( !todo->location().isEmpty() ) {
     tmpStr += "<tr>";
     tmpStr += "<td align=\"right\"><b>" + i18n( "Location" ) + "</b></td>";
-    tmpStr += "<td>" + todo->location() + "</td>";
+    tmpStr += "<td>" + QStyleSheet::escape( todo->location() ) + "</td>";
     tmpStr += "</tr>";
   }
 
@@ -479,11 +486,11 @@ static QString eventViewerFormatJournal( Journal *journal )
   QString tmpStr;
   if ( !journal->summary().isEmpty() ) {
     tmpStr += eventViewerAddTag( "u",
-                                 eventViewerAddTag( "b", journal->summary() ) );
+                                 eventViewerAddTag( "b", QStyleSheet::escape( journal->summary() ) ) );
   }
   tmpStr += eventViewerAddTag( "b", i18n("Journal for %1").arg( journal->dtStartDateStr( false ) ) );
   if ( !journal->description().isEmpty() )
-    tmpStr += eventViewerAddTag( "p", journal->description() );
+    tmpStr += eventViewerAddTag( "p", QStyleSheet::escape( journal->description() ) );
   return tmpStr;
 }
 
@@ -494,7 +501,7 @@ static QString eventViewerFormatFreeBusy( FreeBusy *fb )
   QString tmpStr =
     eventViewerAddTag( "u",
                        eventViewerAddTag( "b", i18n("Free/Busy information for %1")
-                                          .arg( fb->organizer().fullName() ) ) );
+                                          .arg( QStyleSheet::escape( fb->organizer().fullName() ) ) ) );
   tmpStr += eventViewerAddTag( "i", i18n("Busy times in date range %1 - %2:")
       .arg( KGlobal::locale()->formatDate( fb->dtStart().date(), true ) )
       .arg( KGlobal::locale()->formatDate( fb->dtEnd().date(), true ) ) );
@@ -1979,7 +1986,7 @@ bool IncidenceFormatter::ToolTipVisitor::visit( Journal *journal )
 bool IncidenceFormatter::ToolTipVisitor::visit( FreeBusy *fb )
 {
   mResult = "<qt><b>" + i18n("Free/Busy information for %1")
-        .arg(fb->organizer().fullName()) + "</b>";
+        .arg( QStyleSheet::escape( fb->organizer().fullName() ) ) + "</b>";
   mResult += dateRangeText( fb );
   mResult += "</qt>";
   return !mResult.isEmpty();
@@ -1990,20 +1997,21 @@ QString IncidenceFormatter::ToolTipVisitor::generateToolTip( Incidence* incidenc
   if ( !incidence )
     return QString::null;
 
-  QString tmp = "<qt><b>"+ incidence->summary().replace("\n", "<br>")+"</b>";
+  QString tmp = "<qt><b>"+ QStyleSheet::escape( incidence->summary() ).replace("\n", "<br>")+"</b>";
 
   tmp += dtRangeText;
 
   if (!incidence->location().isEmpty()) {
     // Put Location: in italics
     tmp += "<br>"+i18n("<i>Location:</i>&nbsp;%1").
-      arg( incidence->location().replace("\n", "<br>") );
+      arg( QStyleSheet::escape( incidence->location() ).replace("\n", "<br>") );
   }
   if (!incidence->description().isEmpty()) {
     QString desc(incidence->description());
     if (desc.length()>120) {
       desc = desc.left(120) + "...";
     }
+    desc = QStyleSheet::escape( desc );
     tmp += "<br>----------<br>" + i18n("<i>Description:</i><br>") + desc.replace("\n", "<br>");
   }
   tmp += "</qt>";

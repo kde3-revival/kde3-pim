@@ -2379,8 +2379,11 @@ QString ObjectTreeParser::writeSigstatHeader( PartMetaData & block,
             }
             else
             {
-                // create a mailto: link (signer is quoted already)
-                signer = "<a href=\"mailto:" + signer + "\">" + signer + "</a>";
+                // create a mailto: link (signer is quoted already; the
+                // target is the user id as a URL, quoted for the attribute)
+                signer = "<a href=\"mailto:"
+                         + KMMessage::quoteHtmlChars( KMMessage::encodeMailtoUrl( block.signer ), true )
+                         + "\">" + signer + "</a>";
 
                 if (block.isGoodSignature) {
                     if( block.keyTrust < Kpgp::KPGP_VALIDITY_MARGINAL )
