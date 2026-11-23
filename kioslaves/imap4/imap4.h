@@ -132,6 +132,8 @@ protected:
 
   // select or examine the box if needed
   bool assureBox (const QString & aBox, bool readonly);
+  /** Leaves the selected box without expunging it (no CLOSE). */
+  bool deselectBox ();
 
   ssize_t myRead(void *data, ssize_t len);
   /** Report the broken connection (once) and close it. */

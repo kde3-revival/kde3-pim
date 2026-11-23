@@ -117,7 +117,7 @@ imapParser::sendCommand (imapCommand * aCmd)
     currentBox = parseOneWordC(p);
     kdDebug(7116) << "imapParser::sendCommand - setting current box to " << currentBox << endl;
   }
-  else if (command == "CLOSE")
+  else if (command == "CLOSE" || command == "UNSELECT")
   {
      // we no longer have a box open
     currentBox = QString::null;

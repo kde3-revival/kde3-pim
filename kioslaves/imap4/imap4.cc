@@ -72,6 +72,8 @@ imap://server/folder/
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
 
 #ifdef HAVE_LIBSASL2
 extern "C" {
@@ -1187,11 +1189,7 @@ IMAP4Protocol::del (const KURL & _url, bool isFile)
     else
     {
       if (getCurrentBox() == aBox)
-      {
-        imapCommand *cmd = doCommand(imapCommand::clientClose());
-        completeQueue.removeRef(cmd);
-        setState(ISTATE_LOGIN);
-      }
+        deselectBox(); // the DELETE may fail: no expunge before it
       // We unsubscribe, otherwise we get ghost folders on UW-IMAP
       imapCommand *cmd = doCommand(imapCommand::clientUnsubscribe(aBox));
       completeQueue.removeRef(cmd);
@@ -1863,15 +1861,11 @@ IMAP4Protocol::rename (const KURL & src, const KURL & dest, bool overwrite)
         {
           kdDebug(7116) << "IMAP4::rename - close " << getCurrentBox() << endl;
           // mailbox can only be renamed if it is closed
-          imapCommand *cmd = doCommand (imapCommand::clientClose());
-          bool ok = cmd->result() == "OK";
-          completeQueue.removeRef(cmd);
-          if (!ok)
+          if (!deselectBox())
           {
             error(ERR_CANNOT_RENAME, i18n("Unable to close mailbox."));
             return;
           }
-          setState(ISTATE_LOGIN);
         }
         imapCommand *cmd = doCommand (imapCommand::clientRename (sBox, dBox));
         if (cmd->result () != "OK") {
@@ -1932,17 +1926,14 @@ IMAP4Protocol::stat (const KURL & _url)
 
   if (!aSection.isEmpty())
   {
+    // STATUS is not for the selected box (RFC 3501 6.3.10)
     if (getState() == ISTATE_SELECT && aBox == getCurrentBox())
     {
-      imapCommand *cmd = doCommand (imapCommand::clientClose());
-      bool ok = cmd->result() == "OK";
-      completeQueue.removeRef(cmd);
-      if (!ok)
+      if (!deselectBox())
       {
         error(ERR_COULD_NOT_STAT, aBox);
         return;
       }
-      setState(ISTATE_LOGIN);
     }
     bool ok = false;
     QString cmdInfo;
@@ -2786,6 +2777,39 @@ ssize_t IMAP4Protocol::myRead(void *data, ssize_t len)
     return -1;
   }
   return read(data, len);
+}
+
+// CLOSE would expunge the messages marked \Deleted (RFC 3501 6.4.2):
+// UNSELECT (RFC 3691) where the server has it, else EXAMINE of a box that
+// does not exist: a failed SELECT or EXAMINE leaves no box selected, and
+// neither expunges (RFC 3501 6.3.1, 6.3.2).  Should a box of that name
+// exist, it is the selected one now, read-only.  (No '.' in the name: a
+// server may refuse it before it deselects, e.g. Dovecot with Maildir++.)
+bool
+IMAP4Protocol::deselectBox ()
+{
+  const QString box = getCurrentBox();
+  imapCommand *cmd;
+  if (hasCapability("UNSELECT"))
+  {
+    cmd = doCommand (new imapCommand ("UNSELECT", ""));
+    const bool ok = cmd->result () == "OK";
+    completeQueue.removeRef (cmd);
+    if (ok)
+    {
+      setState(ISTATE_LOGIN);
+      return true;
+    }
+  }
+  if (getState() == ISTATE_NO)
+    return false;
+  cmd = doCommand (new imapCommand ("EXAMINE", "\"" +
+      rfcDecoder::toIMAP (QString ("kio_imap4 no such folder %1 %2")
+                          .arg (getpid ()).arg (time (0))) + "\""));
+  completeQueue.removeRef (cmd);
+  if (getState() == ISTATE_LOGIN)
+    return true;
+  return getState() == ISTATE_SELECT && getCurrentBox() != box;
 }
 
 bool
