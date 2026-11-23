@@ -132,10 +132,22 @@ bool KMail::decoderBitmapSize( const QByteArray & d, unsigned int & width, unsig
     bytesPerPixel = 8;
     return gifBitmapSize( d, width, height );
   }
-  if ( n >= 26 && d[0] == 'B' && d[1] == 'M' ) {
-    width = le32( d, 18 );
-    const int h = (int)le32( d, 22 );
-    height = h < 0 ? -h : h;
+  if ( n >= 22 && d[0] == 'B' && d[1] == 'M' ) {
+    // as Qt's read_dib(): a header of 40 bytes and more (Windows, OS/2 2,
+    // their extensions) has 32-bit dimensions, a shorter one (the 12-byte
+    // core header of Windows 2 and OS/2 1) 16-bit ones; both signed
+    int w, h;
+    if ( (int)le32( d, 14 ) >= 40 ) {
+      if ( n < 26 )
+        return false;
+      w = (int)le32( d, 18 );
+      h = (int)le32( d, 22 );
+    } else {
+      w = (short)le16( d, 18 );
+      h = (short)le16( d, 20 );
+    }
+    width = w < 0 ? -(unsigned int)w : w;
+    height = h < 0 ? -(unsigned int)h : h;
     return true;
   }
   if ( n >= 4 && (uchar)d[0] == 0xFF && (uchar)d[1] == 0xD8 ) {
