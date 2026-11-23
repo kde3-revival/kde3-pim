@@ -381,8 +381,9 @@ bool KMSystemTray::mainWindowIsOnCurrentDesktop()
   if ( !mainWin )
     return false;
 
-  return KWin::windowInfo( mainWin->winId(),
-                           NET::WMDesktop ).isOnCurrentDesktop();
+  // a minimized window counts as not shown: the click restores it
+  const KWin::WindowInfo info = KWin::windowInfo( mainWin->winId(), NET::WMDesktop | NET::WMState | NET::XAWMState );
+  return info.isOnCurrentDesktop() && !info.isMinimized();
 }
 
 /**
@@ -399,15 +400,22 @@ void KMSystemTray::showKMail()
   {
     KWin::WindowInfo cur =  KWin::windowInfo( mainWin->winId(), NET::WMDesktop );
     if ( cur.valid() ) mDesktopOfMainWin = cur.desktop();
-    // switch to appropriate desktop
-    if ( mDesktopOfMainWin != NET::OnAllDesktops )
-      KWin::setCurrentDesktop( mDesktopOfMainWin );
+    // switch to the window's desktop, or bring the window to the current one
+    const bool remember = GlobalSettings::self()->systemTrayRememberVirtualDesktop();
+    if ( mDesktopOfMainWin != NET::OnAllDesktops ) {
+      if ( remember )
+        KWin::setCurrentDesktop( mDesktopOfMainWin );
+      else
+        mDesktopOfMainWin = KWin::currentDesktop();
+    }
     if ( !mParentVisible ) {
       if ( mDesktopOfMainWin == NET::OnAllDesktops )
         KWin::setOnAllDesktops( mainWin->winId(), true );
       mainWin->move( mPosOfMainWin );
       mainWin->show();
     }
+    if ( !remember && mDesktopOfMainWin != NET::OnAllDesktops )
+      KWin::setOnDesktop( mainWin->winId(), mDesktopOfMainWin );
     KWin::activateWindow( mainWin->winId() );
     mParentVisible = true;
   }
