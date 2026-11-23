@@ -20,6 +20,7 @@
 
 #include "cidrewriter.h"
 
+#include <kcharsets.h>
 #include <kurl.h>
 
 #include <qregexp.h>
@@ -53,59 +54,132 @@ namespace {
            || u == '-' || u == '_' || u >= 0x80 || u == '\\';
   }
 
-  // The character references of an attribute value: &amp; &lt; &gt;
-  // &quot; &apos; &#N; &#xN; (with their semicolon); others stay.
+  // HTML 5 names of ASCII characters KCharsets does not know (ways to
+  // write "cid:" too)
+  struct AsciiName { const char * name; char c; };
+  const AsciiName asciiNames[] = {
+    { "DiacriticalGrave", '`' }, { "Hat", '^' }, { "NewLine", '\n' }, { "Tab", '\t' },
+    { "UnderBar", '_' }, { "VerticalLine", '|' }, { "ast", '*' }, { "bsol", '\\' },
+    { "colon", ':' }, { "comma", ',' }, { "commat", '@' }, { "dollar", '$' },
+    { "equals", '=' }, { "excl", '!' }, { "grave", '`' }, { "lbrace", '{' },
+    { "lbrack", '[' }, { "lcub", '{' }, { "lowbar", '_' }, { "lpar", '(' },
+    { "lsqb", '[' }, { "midast", '*' }, { "num", '#' }, { "period", '.' },
+    { "plus", '+' }, { "quest", '?' }, { "rbrace", '}' }, { "rbrack", ']' },
+    { "rcub", '}' }, { "rpar", ')' }, { "rsqb", ']' }, { "semi", ';' },
+    { "sol", '/' }, { "verbar", '|' }, { "vert", '|' }, { 0, 0 }
+  };
+
+  // A named character reference (without '&' and ';'): HTML 4's (from
+  // KCharsets), with HTML 5's values where they differ, and HTML 5's
+  // names above; QChar::null if none.
+  QChar namedReference( const QString & name ) {
+    for ( int k = 0; asciiNames[k].name; ++k )
+      if ( name == asciiNames[k].name )
+        return QChar( asciiNames[k].c );
+    if ( name == "COPY" ) return QChar( (ushort)0xa9 );
+    if ( name == "REG" ) return QChar( (ushort)0xae );
+    if ( name == "and" ) return QChar( (ushort)0x2227 );
+    if ( name == "or" ) return QChar( (ushort)0x2228 );
+    if ( name == "lang" ) return QChar( (ushort)0x27e8 );
+    if ( name == "rang" ) return QChar( (ushort)0x27e9 );
+    // names of KCharsets' table no browser knows
+    if ( name == "Eague" || name == "eague" || name == "supl" || name == "dol"
+         || name == "emdash" || name == "endash" )
+      return QChar::null;
+    return KCharsets::fromEntity( name );
+  }
+
+  // The references a browser decodes also without their semicolon (HTML 5's
+  // legacy ones): Latin-1's names (U+00A0 to U+00FF), amp lt gt quot and
+  // upper-case AMP LT GT QUOT COPY REG.
+  bool isLegacyReference( const QString & name, QChar c ) {
+    const ushort u = c.unicode();
+    return ( u >= 0xa0 && u <= 0xff ) || name == "amp" || name == "lt" || name == "gt" || name == "quot"
+           || name == "AMP" || name == "LT" || name == "GT" || name == "QUOT";
+  }
+
+  inline bool isAsciiAlnum( QChar c ) {
+    const ushort u = c.unicode();
+    return ( u >= 'a' && u <= 'z' ) || ( u >= 'A' && u <= 'Z' ) || ( u >= '0' && u <= '9' );
+  }
+
+  // what HTML 5 makes of &#128; to &#159; (windows-1252); 0: unchanged
+  const ushort windows1252[32] = {
+    0x20ac, 0, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017d, 0,
+    0, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014, 0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0, 0x017e, 0x0178
+  };
+
+  // The character references of an attribute value, as HTML 5 decodes
+  // them there: numeric ones (&#N, &#xN, with or without semicolon;
+  // 0, surrogates and beyond U+10FFFF are U+FFFD, 128 to 159 windows-1252),
+  // named ones with their semicolon, the legacy ones also without it
+  // unless an alphanumeric character or '=' follows.  Others stay.
   QString decodeReferences( const QString & v ) {
     if ( v.find( '&' ) < 0 )
       return v;
     QString out;
     const int n = v.length();
-    int last = 0;
-    for ( int i = v.find( '&' ); i >= 0 && i < n; i = v.find( '&', i + 1 ) ) {
-      int semi = -1;   // within 10 characters: no search through the rest
-      for ( int k = i + 1; k < n && k <= i + 10; ++k )
-        if ( v[k] == ';' ) { semi = k; break; }
-      if ( semi < 0 )
-        continue;
-      const QString name = v.mid( i + 1, semi - i - 1 );
-      QChar c;
-      if ( name == "amp" ) c = '&';
-      else if ( name == "lt" ) c = '<';
-      else if ( name == "gt" ) c = '>';
-      else if ( name == "quot" ) c = '"';
-      else if ( name == "apos" ) c = '\'';
-      else if ( name == "colon" ) c = ':';
-      else if ( name == "sol" ) c = '/';
-      else if ( name == "num" ) c = '#';
-      else if ( name == "percnt" ) c = '%';
-      else if ( name == "commat" ) c = '@';
-      else if ( name == "period" ) c = '.';
-      else if ( name == "lowbar" ) c = '_';
-      else if ( name == "plus" ) c = '+';
-      else if ( name == "equals" ) c = '=';
-      else if ( name == "quest" ) c = '?';
-      else if ( name == "excl" ) c = '!';
-      else if ( name == "dollar" ) c = '$';
-      else if ( name == "lpar" ) c = '(';
-      else if ( name == "rpar" ) c = ')';
-      else if ( name == "comma" ) c = ',';
-      else if ( name == "semi" ) c = ';';
-      else if ( name == "Tab" ) c = '\t';
-      else if ( name.startsWith( "#x" ) || name.startsWith( "#X" ) ) {
-        bool ok;
-        const uint u = name.mid( 2 ).toUInt( &ok, 16 );
-        if ( ok && u > 0 && u < 0xD800 ) c = QChar( (ushort)u );
-      } else if ( name.startsWith( "#" ) ) {
-        bool ok;
-        const uint u = name.mid( 1 ).toUInt( &ok, 10 );
-        if ( ok && u > 0 && u < 0xD800 ) c = QChar( (ushort)u );
+    int last = 0;   // v[last, i) is not in out yet
+    int i = v.find( '&' );
+    while ( i >= 0 && i < n ) {
+      const int j = i + 1;
+      int end = -1;   // after the reference
+      uint code = 0;
+      QChar named;
+      if ( j < n && v[j] == '#' ) {
+        int k = j + 1;
+        const bool hex = k < n && ( v[k] == 'x' || v[k] == 'X' );
+        if ( hex )
+          ++k;
+        const int digits = k;
+        for ( ; k < n; ++k ) {
+          const ushort u = v[k].unicode();
+          int d;
+          if ( u >= '0' && u <= '9' ) d = u - '0';
+          else if ( hex && u >= 'a' && u <= 'f' ) d = u - 'a' + 10;
+          else if ( hex && u >= 'A' && u <= 'F' ) d = u - 'A' + 10;
+          else break;
+          code = code * ( hex ? 16 : 10 ) + d;
+          if ( code > 0x10ffff )
+            code = 0x110000;   // (stays beyond: no overflow)
+        }
+        if ( k > digits ) {
+          end = ( k < n && v[k] == ';' ) ? k + 1 : k;
+          if ( code == 0 || code > 0x10ffff || ( code >= 0xd800 && code <= 0xdfff ) )
+            code = 0xfffd;
+          else if ( code >= 0x80 && code <= 0x9f && windows1252[code - 0x80] )
+            code = windows1252[code - 0x80];
+        }
+      } else {
+        int k = j;
+        while ( k < n && k - j < 32 && isAsciiAlnum( v[k] ) )
+          ++k;
+        if ( k > j && ( k >= n || !isAsciiAlnum( v[k] ) ) ) {
+          const QString name = v.mid( j, k - j );
+          named = namedReference( name );
+          if ( !named.isNull() ) {
+            if ( k < n && v[k] == ';' )
+              end = k + 1;
+            else if ( isLegacyReference( name, named ) && ( k >= n || v[k] != '=' ) )
+              end = k;
+          }
+        }
       }
-      if ( c.isNull() )
+      if ( end < 0 ) {
+        i = v.find( '&', j );   // not a reference: the '&' stays
         continue;
+      }
       out += v.mid( last, i - last );
-      out += c;
-      last = semi + 1;
-      i = semi;
+      if ( end >= 0 && !named.isNull() )
+        out += named;
+      else if ( code > 0xffff ) {
+        code -= 0x10000;
+        out += QChar( (ushort)( 0xd800 + ( code >> 10 ) ) );
+        out += QChar( (ushort)( 0xdc00 + ( code & 0x3ff ) ) );
+      } else
+        out += QChar( (ushort)code );
+      last = end;
+      i = v.find( '&', end );
     }
     return out + v.mid( last );
   }
