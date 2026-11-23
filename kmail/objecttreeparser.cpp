@@ -47,6 +47,7 @@
 #include "htmlstatusbar.h"
 #include "csshelper.h"
 #include "cidrewriter.h"
+#include "imageheader.h"
 #include "bodypartformatter.h"
 #include "bodypartformatterfactory.h"
 #include "partnodebodypart.h"
@@ -1121,55 +1122,6 @@ namespace KMail {
   }
 
   namespace {
-    inline uint be16( const QByteArray & d, uint i ) { return ( (uchar)d[i] << 8 ) | (uchar)d[i + 1]; }
-    inline uint be32( const QByteArray & d, uint i ) { return ( be16( d, i ) << 16 ) | be16( d, i + 2 ); }
-    inline uint le16( const QByteArray & d, uint i ) { return (uchar)d[i] | ( (uchar)d[i + 1] << 8 ); }
-    inline uint le32( const QByteArray & d, uint i ) { return le16( d, i ) | ( le16( d, i + 2 ) << 16 ); }
-
-    // The dimensions of a PNG, JPEG, GIF or BMP from its header (what the
-    // decoder allocates for); false if they cannot be read.
-    bool imageDimensions( const QByteArray & d, uint & width, uint & height ) {
-      const uint n = d.size();
-      if ( n >= 24 && (uchar)d[0] == 0x89 && d[1] == 'P' && d[2] == 'N' && d[3] == 'G'
-           && d[12] == 'I' && d[13] == 'H' && d[14] == 'D' && d[15] == 'R' ) {
-        width = be32( d, 16 );
-        height = be32( d, 20 );
-        return true;
-      }
-      if ( n >= 10 && d[0] == 'G' && d[1] == 'I' && d[2] == 'F' ) {
-        width = le16( d, 6 );
-        height = le16( d, 8 );
-        return true;
-      }
-      if ( n >= 26 && d[0] == 'B' && d[1] == 'M' ) {
-        width = le32( d, 18 );
-        const int h = (int)le32( d, 22 );
-        height = h < 0 ? -h : h;
-        return true;
-      }
-      if ( n >= 4 && (uchar)d[0] == 0xFF && (uchar)d[1] == 0xD8 ) {
-        // the frame header (SOFn), segment by segment
-        uint i = 2;
-        while ( i + 9 < n ) {
-          if ( (uchar)d[i] != 0xFF )
-            return false;
-          const uchar marker = d[i + 1];
-          if ( marker == 0xFF ) { ++i; continue; }
-          if ( marker == 0xD8 || marker == 0x01 || ( marker >= 0xD0 && marker <= 0xD7 ) ) { i += 2; continue; }
-          const uint length = be16( d, i + 2 );
-          if ( marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC ) {
-            height = be16( d, i + 5 );
-            width = be16( d, i + 7 );
-            return true;
-          }
-          if ( length < 2 )
-            return false;
-          i += 2 + length;
-        }
-      }
-      return false;
-    }
-
     // The images a shown HTML part can use by Content-ID: the parts of
     // its scope (see embedRelatedResources()).
     class ScopeResolver : public CidResolver {
@@ -1227,12 +1179,12 @@ namespace KMail {
         if ( !mReader->mayUseEmbeddedBytes( 2 * estimate ) )
           return QString::null;
         const QByteArray data = part->msgPart().bodyDecodedBinary();
-        // the bitmap the decoder allocates, from the header, before
+        // the bitmap the decoder allocates, from the headers, before
         // decoding: at most 64 MB (16 megapixels of 32 bits)
-        uint width = 0, height = 0;
-        if ( data.isEmpty() || !imageDimensions( data, width, height )
+        uint width = 0, height = 0, bytesPerPixel = 0;
+        if ( data.isEmpty() || !decoderBitmapSize( data, width, height, bytesPerPixel )
              || width == 0 || height == 0 || width > 65535 || height > 65535
-             || (unsigned long long)width * height * 4 > 64ULL * 1024 * 1024 )
+             || (unsigned long long)width * height * bytesPerPixel > 64ULL * 1024 * 1024 )
           return QString::null;
         QImage image;
         if ( !image.loadFromData( data ) )
