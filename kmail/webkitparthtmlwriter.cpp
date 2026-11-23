@@ -276,7 +276,15 @@ namespace KMail {
     QString index_html = dir + "/index.html";
     // KMail's style sheet (KHTML's user style sheet) in the head of
     // KMail's document only.
-    QString style = "<style type=\"text/css\">\n" + mPendingCss + "</style>\n";
+    // KMail's document has no doctype (quirks mode, as with KHTML), and
+    // WebKit's quirks give tables font-size: medium and normal fonts
+    // instead of inheriting them (KHTML does not): the fields of the fancy
+    // header, the attachment table were larger than the rest.  Inherited
+    // as in standards mode; KMail's own rules come after.
+    QString style = "<style type=\"text/css\">\n"
+                    "table { font-size: inherit; font-weight: inherit; font-style: inherit; "
+                    "font-variant: inherit; line-height: inherit; white-space: inherit; }\n"
+                    + mPendingCss + "</style>\n";
     int head = html.find( "<head>", 0, false );
     if ( head >= 0 )
       html.insert( head + 6, style );
