@@ -708,6 +708,9 @@ void imapParser::parseList (parseString & result)
   this_one.setName (rfcDecoder::fromIMAP(parseLiteralC(result)));  // decode modified UTF7
 
   listResponses.append (this_one);
+  // any LIST of a known box tells what it is now
+  if (listedBoxes.contains (this_one.name ()))
+    listedBoxes.replace (this_one.name (), this_one);
 }
 
 void imapParser::parseLsub (parseString & result)

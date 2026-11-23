@@ -2070,6 +2070,7 @@ void IMAP4Protocol::openConnection()
 
 void IMAP4Protocol::closeConnection()
 {
+  listedBoxes.clear(); // what the boxes are is known per connection
   if (getState() == ISTATE_NO) return;
   if (getState() == ISTATE_SELECT && metaData("expunge") == "auto")
   {
@@ -2089,7 +2090,6 @@ void IMAP4Protocol::closeConnection()
   sentQueue.clear();
   lastHandled = 0;
   currentBox = QString::null;
-  listedBoxes.clear();
   readBufferLen = 0;
 }
 
@@ -2113,6 +2113,7 @@ bool IMAP4Protocol::makeLogin ()
 //      fcntl (m_iSock, F_SETFL, (fcntl (m_iSock, F_GETFL) | O_NDELAY));
 
     setState(ISTATE_CONNECT);
+    listedBoxes.clear(); // also after a BYE that left the state as it was
     if (!alreadyConnected)
     {
       mConnectionErrorReported = false;
@@ -2606,8 +2607,11 @@ IMAP4Protocol::parseURL (const KURL & _url, QString & _box,
           // listing on this connection found the box already: a round trip
           // for every folder the application opens (see sendCommand() for
           // when it is forgotten)
+          // only a box of messages: a folder that holds none (\Noselect)
+          // would make an operation fail before any SELECT could notice
+          // that it has become one, so for such a folder LIST again
           QMap < QString, imapList >::ConstIterator listed = listedBoxes.find (_box);
-          if (listed != listedBoxes.end ())
+          if (listed != listedBoxes.end () && !(*listed).noSelect ())
           {
             retVal = typeOfListedBox (*listed, _hierarchyDelimiter);
           }
