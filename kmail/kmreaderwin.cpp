@@ -1390,10 +1390,12 @@ static QString aboutImageDataUrl( const QString & dir, const QString & name )
     return QString::null;
   // at most the limit: one byte more means too large (also a file that
   // grew since)
+  // (The file is checked, then opened: a swap in between is not guarded
+  // against; these are KDE's installed data directories.)
   QByteArray data( limit + 1 );
   const Q_LONG n = f.readBlock( data.data(), limit + 1 );
-  if ( n < 0 || (Q_ULONG)n > limit )
-    return QString::null;
+  if ( n < 0 || (Q_ULONG)n > limit || f.status() != IO_Ok )
+    return QString::null;   // too large, or a failed read: no image
   data.resize( n );
   return QString::fromLatin1( "data:%1;base64," ).arg( type ) + QString::fromLatin1( KCodecs::base64Encode( data ) );
 }
