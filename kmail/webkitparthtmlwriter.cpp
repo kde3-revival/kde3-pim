@@ -111,11 +111,13 @@ namespace KMail {
   WebKitPartHtmlWriter::WebKitPartHtmlWriter( KParts::ReadOnlyPart * part, QObject * parent, const char * name )
     : QObject( parent, name ), HtmlWriter(), mPart( part ), mBlank( false ),
       mLoadTimer( 0, "mLoadTimer" ), mSerial( 0 ),
-      mCovered( false ), mLoadedAfterCover( false ), mUncoverTimer( 0, "mUncoverTimer" ),
+      mCovered( false ), mBlankLoading( false ), mDeferredLoad( false ),
+      mUncoverTimer( 0, "mUncoverTimer" ), mBlankTimer( 0, "mBlankTimer" ),
       mStats( getenv( "KMAIL_WEBKIT_STATS" ) != 0 ), mEndTime( 0 )
   {
     connect( &mLoadTimer, SIGNAL(timeout()), SLOT(slotLoad()) );
     connect( &mUncoverTimer, SIGNAL(timeout()), SLOT(slotUncover()) );
+    connect( &mBlankTimer, SIGNAL(timeout()), SLOT(slotBlankDone()) );
     if ( part )
       connect( part, SIGNAL(completed()), SLOT(slotCompleted()) );
   }
@@ -257,6 +259,10 @@ namespace KMail {
   void WebKitPartHtmlWriter::slotLoad() {
     if ( !mPart )
       return;
+    if ( mBlankLoading ) {
+      mDeferredLoad = true;   // after the blank page (slotBlankDone())
+      return;
+    }
     long long start = nowMs();
     QString dir = messageDirectory();
     if ( dir.isEmpty() )
@@ -331,12 +337,6 @@ namespace KMail {
     if ( mStats )
       fprintf( stderr, "kmail-webkit: document %u: end() -> files written %lld ms (%lld ms writing)\n",
                mSerial, nowMs() - mEndTime, nowMs() - start );
-    if ( mCovered ) {
-      // the document of the cover's generation: the cover goes when it
-      // (or a later one) has completed, not when an earlier one did
-      mLoadedAfterCover = true;
-      mUncoverTimer.stop();
-    }
     mPart->openURL( KURL::fromPathOrURL( index_html ) );
   }
 
@@ -348,13 +348,27 @@ namespace KMail {
   void WebKitPartHtmlWriter::slotCompleted() {
     if ( mStats )
       fprintf( stderr, "kmail-webkit: document %u: end() -> loaded %lld ms\n", mSerial, nowMs() - mEndTime );
-    // The part paints the new document after its load (its frames are
-    // sized first, then WebKit presents a frame): the cover stays a little
-    // longer, never the previous message after the cover.  The part does
-    // not say when the new document is on screen; 80 ms was too short on a
-    // loaded machine (the previous message for 150 ms after the cover).
-    if ( mCovered && mLoadedAfterCover && !mLoadTimer.isActive() )
-      mUncoverTimer.start( 250, true );
+    if ( mBlankLoading )
+      slotBlankDone();
+  }
+
+  // The blank page of a message switch is loaded (or did not come in
+  // time): the next message's document, if it is ready already, is
+  // loaded; WebKit keeps showing the blank page until that one is ready,
+  // never the previous message again.  The cover goes once WebKit has
+  // presented the blank page, which it does not say: 250 ms (measured,
+  // four KMails at once: up to ~110 ms; 60 ms let the previous message
+  // through for a frame).
+  void WebKitPartHtmlWriter::slotBlankDone() {
+    if ( !mBlankLoading )
+      return;
+    mBlankLoading = false;
+    mBlankTimer.stop();
+    mUncoverTimer.start( 250, true );
+    if ( mDeferredLoad ) {
+      mDeferredLoad = false;
+      mLoadTimer.start( 0, true );
+    }
   }
 
   void WebKitPartHtmlWriter::clearView( const QColor & background ) {
@@ -367,7 +381,6 @@ namespace KMail {
       view->installEventFilter( this );
     }
     mUncoverTimer.stop();
-    mLoadedAfterCover = false;
     // A document of the previous message not loaded yet: never.
     mLoadTimer.stop();
     mPendingHtml = QString::null;
@@ -382,11 +395,35 @@ namespace KMail {
     QApplication::flushX();
     if ( mStats )
       fprintf( stderr, "kmail-webkit: cleared\n" );
+
+    // The part keeps the previous document until the next one is ready
+    // (laid out, its frames sized, painted), which takes a while for a
+    // large message: the cover cannot know when that is.  A blank page
+    // (the reader's background) replaces the previous message in the
+    // part first; the cover goes once it is shown, and the next message
+    // replaces the blank page whenever it is ready.  Its document waits
+    // for the blank page (slotLoad()).
+    mDeferredLoad = false;
+    if ( mBlankLoading )
+      return;   // a blank page is on its way already (KMail selects twice)
+    const QString dir = messageDirectory();
+    // WebKit replaces a page only by one that is "visually non-empty":
+    // text in the background colour makes it so (an empty page left the
+    // previous message on screen).
+    if ( dir.isEmpty() || !writeFile( dir + "/index.html", QString::fromLatin1(
+           "<html><head><style>html, body { background: %1; color: %1; margin: 0; overflow: hidden; }"
+           "p { margin: 0; -webkit-user-select: none; }</style></head><body><p>%2</p></body></html>" )
+           .arg( background.name() ).arg( QString().fill( 'x', 400 ) ) ) ) {
+      mBlankLoading = false;
+      mUncoverTimer.start( 250, true );
+      return;
+    }
+    mBlankLoading = true;
+    mBlankTimer.start( 1000, true );   // shown or not: go on
+    mPart->openURL( KURL::fromPathOrURL( dir + "/index.html" ) );
   }
 
   void WebKitPartHtmlWriter::slotUncover() {
-    if ( mLoadTimer.isActive() )
-      return;   // a newer document follows: its completed() uncovers
     if ( mCover )
       mCover->hide();
     mCovered = false;

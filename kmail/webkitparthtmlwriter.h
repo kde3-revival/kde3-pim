@@ -87,7 +87,8 @@ namespace KMail {
         covered at once with @p background, so that the previous message
         is not shown while the next one is prepared, downloaded or
         loaded (the part shows a new document only once it is ready).
-        The cover goes when a document loaded after it is shown. */
+        A blank page replaces the previous message in the part, the cover
+        goes once it is shown (see the implementation). */
     void clearView( const QColor & background );
 
     /** HTML for KMail's \<div id="attachmentInjectionPoint"\>. */
@@ -101,6 +102,7 @@ namespace KMail {
     void slotLoad();
     void slotCompleted();
     void slotUncover();
+    void slotBlankDone();
 
   private:
     void forgetLinks();
@@ -127,8 +129,10 @@ namespace KMail {
     QMap<QString, QString> mLinks;   // kmail-link: URL -> original href
     QGuardedPtr<QWidget> mCover;   // over the part's widget, see clearView()
     bool mCovered;          // the cover is up (whatever the widgets' visibility)
-    bool mLoadedAfterCover;
+    bool mBlankLoading;     // the blank page of a message switch is loading
+    bool mDeferredLoad;     // a document waits for it
     QTimer mUncoverTimer;
+    QTimer mBlankTimer;
     bool mStats;
     long long mEndTime;     // statistics: end() of the document shown last
   };
