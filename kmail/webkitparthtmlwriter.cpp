@@ -111,13 +111,13 @@ namespace KMail {
   WebKitPartHtmlWriter::WebKitPartHtmlWriter( KParts::ReadOnlyPart * part, QObject * parent, const char * name )
     : QObject( parent, name ), HtmlWriter(), mPart( part ), mBlank( false ),
       mLoadTimer( 0, "mLoadTimer" ), mSerial( 0 ),
-      mCovered( false ), mBlankLoading( false ), mDeferredLoad( false ),
+      mCovered( false ), mBlankLoading( false ), mDeferredLoad( false ), mUncoverAfterLoad( false ),
       mUncoverTimer( 0, "mUncoverTimer" ), mBlankTimer( 0, "mBlankTimer" ),
       mStats( getenv( "KMAIL_WEBKIT_STATS" ) != 0 ), mEndTime( 0 )
   {
     connect( &mLoadTimer, SIGNAL(timeout()), SLOT(slotLoad()) );
     connect( &mUncoverTimer, SIGNAL(timeout()), SLOT(slotUncover()) );
-    connect( &mBlankTimer, SIGNAL(timeout()), SLOT(slotBlankDone()) );
+    connect( &mBlankTimer, SIGNAL(timeout()), SLOT(slotBlankTimeout()) );
     if ( part )
       connect( part, SIGNAL(completed()), SLOT(slotCompleted()) );
   }
@@ -270,7 +270,14 @@ namespace KMail {
       return;
 
     for ( unsigned i = 0; i < mPendingBodies.count(); ++i )
-      writeFile( dir + QString::fromLatin1( "/body-%1.html" ).arg( i ), mPendingBodies[i] );
+      if ( !writeFile( dir + QString::fromLatin1( "/body-%1.html" ).arg( i ), mPendingBodies[i] ) ) {
+        // not shown at all rather than without its images (their parts
+        // are no longer in the attachment list)
+        kdWarning( 5006 ) << "WebKitPartHtmlWriter: cannot write " << dir << endl;
+        mPendingHtml = QString::null;
+        mPendingBodies.clear();
+        return;
+      }
 
     QString html = mPendingHtml;
     if ( !mPendingAttachmentList.isEmpty() )
@@ -332,7 +339,12 @@ namespace KMail {
       html.insert( head + 6, style );
     else
       html.prepend( style );
-    writeFile( index_html, html );
+    if ( !writeFile( index_html, html ) ) {
+      kdWarning( 5006 ) << "WebKitPartHtmlWriter: cannot write " << index_html << endl;
+      mPendingHtml = QString::null;
+      mPendingBodies.clear();
+      return;
+    }
     mPendingHtml = QString::null;
     mPendingBodies.clear();
     if ( mStats )
@@ -351,6 +363,11 @@ namespace KMail {
       fprintf( stderr, "kmail-webkit: document %u: end() -> loaded %lld ms\n", mSerial, nowMs() - mEndTime );
     if ( mBlankLoading )
       slotBlankDone();
+    else if ( mCovered && mUncoverAfterLoad )
+      // the blank page did not come: the cover goes a while after the
+      // next document loaded (no better evidence that the previous
+      // message is gone; a long blank rather than the previous message)
+      mUncoverTimer.start( 1000, true );
   }
 
   // The blank page of a message switch is loaded (or did not come in
@@ -372,6 +389,19 @@ namespace KMail {
     }
   }
 
+  // The blank page did not load in time: the next document goes on, the
+  // cover stays until that one loaded (slotCompleted()).
+  void WebKitPartHtmlWriter::slotBlankTimeout() {
+    if ( !mBlankLoading )
+      return;
+    mBlankLoading = false;
+    mUncoverAfterLoad = true;
+    if ( mDeferredLoad ) {
+      mDeferredLoad = false;
+      mLoadTimer.start( 0, true );
+    }
+  }
+
   void WebKitPartHtmlWriter::clearView( const QColor & background ) {
     if ( !mPart || !mPart->widget() )
       return;
@@ -382,6 +412,7 @@ namespace KMail {
       view->installEventFilter( this );
     }
     mUncoverTimer.stop();
+    mUncoverAfterLoad = false;
     // A document of the previous message not loaded yet: never.
     mLoadTimer.stop();
     mPendingHtml = QString::null;
@@ -416,11 +447,11 @@ namespace KMail {
            "p { margin: 0; -webkit-user-select: none; }</style></head><body><p>%2</p></body></html>" )
            .arg( background.name() ).arg( QString().fill( 'x', 400 ) ) ) ) {
       mBlankLoading = false;
-      mUncoverTimer.start( 250, true );
+      mUncoverAfterLoad = true;   // see slotCompleted()
       return;
     }
     mBlankLoading = true;
-    mBlankTimer.start( 1000, true );   // shown or not: go on
+    mBlankTimer.start( 1000, true );   // late: the next document goes on, the cover waits for it
     mPart->openURL( KURL::fromPathOrURL( dir + "/index.html" ) );
   }
 
@@ -428,6 +459,7 @@ namespace KMail {
     if ( mCover )
       mCover->hide();
     mCovered = false;
+    mUncoverAfterLoad = false;
     if ( mStats )
       fprintf( stderr, "kmail-webkit: document %u: end() -> uncovered %lld ms\n", mSerial, nowMs() - mEndTime );
   }

@@ -103,6 +103,7 @@ namespace KMail {
     void slotCompleted();
     void slotUncover();
     void slotBlankDone();
+    void slotBlankTimeout();
 
   private:
     void forgetLinks();
@@ -131,6 +132,7 @@ namespace KMail {
     bool mCovered;          // the cover is up (whatever the widgets' visibility)
     bool mBlankLoading;     // the blank page of a message switch is loading
     bool mDeferredLoad;     // a document waits for it
+    bool mUncoverAfterLoad; // no blank page: the cover waits for the next load
     QTimer mUncoverTimer;
     QTimer mBlankTimer;
     bool mStats;

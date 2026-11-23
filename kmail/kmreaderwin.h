@@ -99,6 +99,13 @@ public:
   /** @p bytes more of embedded URLs for the message shown; false (and
       not counted) beyond the bound (data: URLs are copies). */
   bool useEmbeddedBytes( unsigned int bytes );
+  /** Whether @p bytes more would be within that bound (not counted). */
+  bool mayUseEmbeddedBytes( unsigned int bytes ) const;
+  /** The children of @p scope (a multipart) by Content-ID, for
+      ObjectTreeParser::embedRelatedResources(): 0 for a Content-ID two
+      children share, and for the related root, multiparts and messages.
+      Collected once per message. */
+  const QMap<QString, partNode *> & embeddingScope( partNode * scope );
 
   KMReaderWin( QWidget *parent,
 	       QWidget *mainWindow,
@@ -517,6 +524,7 @@ private:
   QMap<partNode *, QString> mEmbeddedResources;
   QMap<partNode *, bool> mHiddenResources;
   unsigned int mEmbeddedBytes;
+  QMap<partNode *, QMap<QString, partNode *> > mEmbeddingScopes;
   void forgetEmbeddedResources();
   KMMessage *mMessage;
   // widgets:

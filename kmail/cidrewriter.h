@@ -30,7 +30,11 @@ namespace KMail {
   class CidResolver {
   public:
     virtual ~CidResolver() {}
-    virtual QString urlFor( const QString & contentId ) = 0;
+    /** @p shown: the reference shows the image for sure (an <img src>
+        or background="" not hidden by its own attributes), so the part
+        need not stay an attachment; false for references in CSS (whether
+        a declaration shows its image is not known). */
+    virtual QString urlFor( const QString & contentId, bool shown ) = 0;
   };
 
   /**

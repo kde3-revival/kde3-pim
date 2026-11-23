@@ -1894,19 +1894,45 @@ QString KMReaderWin::embeddedResourceURL( partNode * node ) const
   return it == mEmbeddedResources.end() ? QString::null : it.data();
 }
 
+static const unsigned int embeddedBytesLimit = 64 * 1024 * 1024;
+
+bool KMReaderWin::mayUseEmbeddedBytes( unsigned int bytes ) const
+{
+  return bytes <= embeddedBytesLimit && mEmbeddedBytes <= embeddedBytesLimit - bytes;
+}
+
 bool KMReaderWin::useEmbeddedBytes( unsigned int bytes )
 {
-  static const unsigned int limit = 64 * 1024 * 1024;
-  if ( bytes > limit || mEmbeddedBytes > limit - bytes )
+  if ( !mayUseEmbeddedBytes( bytes ) )
     return false;
   mEmbeddedBytes += bytes;
   return true;
+}
+
+const QMap<QString, partNode *> & KMReaderWin::embeddingScope( partNode * scope )
+{
+  QMap<partNode *, QMap<QString, partNode *> >::Iterator found = mEmbeddingScopes.find( scope );
+  if ( found != mEmbeddingScopes.end() )
+    return found.data();
+  QMap<QString, partNode *> & parts = mEmbeddingScopes[scope];
+  const partNode * root = scope->relatedRoot();
+  for ( partNode * child = scope->firstChild(); child; child = child->nextSibling() ) {
+    const QString id = child->contentIdNoBrackets();
+    if ( id.isEmpty() )
+      continue;
+    const bool candidate = child != root && child->type() != DwMime::kTypeMultipart
+                           && child->type() != DwMime::kTypeMessage;
+    // a Content-ID two children share is nobody's
+    parts[id] = ( candidate && !parts.contains( id ) ) ? child : 0;
+  }
+  return parts;
 }
 
 void KMReaderWin::forgetEmbeddedResources()
 {
   mEmbeddedResources.clear();
   mHiddenResources.clear();
+  mEmbeddingScopes.clear();
   mEmbeddedBytes = 0;
 }
 

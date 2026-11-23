@@ -107,6 +107,7 @@
 #include <kstyle.h>
 #include <qbuffer.h>
 #include <qpixmap.h>
+#include <qimage.h>
 #include <qpainter.h>
 #include <qregexp.h>
 
@@ -1124,32 +1125,29 @@ namespace KMail {
     // its scope (see embedRelatedResources()).
     class ScopeResolver : public CidResolver {
     public:
-      ScopeResolver( KMReaderWin * reader, bool isolated, bool resources )
-        : mReader( reader ), mIsolated( isolated ), mResources( resources ) {}
+      ScopeResolver( KMReaderWin * reader, const QMap<QString, partNode *> & parts, bool isolated, bool resources )
+        : mReader( reader ), mParts( parts ), mIsolated( isolated ), mResources( resources ) {}
 
-      QMap<QString, partNode *> byId;
-      QMap<QString, bool> ambiguous;
-
-      QString urlFor( const QString & id ) {
-        QMap<QString, partNode *>::ConstIterator it = byId.find( id );
-        if ( it == byId.end() || ambiguous.contains( id ) )
-          return QString::null;
+      QString urlFor( const QString & id, bool shown ) {
+        QMap<QString, partNode *>::ConstIterator it = mParts.find( id );
+        if ( it == mParts.end() || !it.data() )
+          return QString::null;   // none, ambiguous, or not one to embed
         partNode * part = it.data();
         QString url = mReader->embeddedResourceURL( part );
         if ( url.isEmpty() ) {
           url = makeURL( part );
-          if ( url.isEmpty() )
+          // kept for the message: within the bound
+          if ( url.isEmpty() || !mReader->useEmbeddedBytes( url.length() ) )
             return QString::null;   // stays an attachment
           mReader->addEmbeddedResource( part, url );
         }
-        // data: URLs are copies: a bound for the whole message (one image
-        // referenced a million times)
+        // every reference is a copy (data: URLs): within the bound too
         if ( !mReader->useEmbeddedBytes( url.length() ) )
           return QString::null;
-        // A resource of the related root, shown: not an attachment.  (In
-        // a multipart/mixed, cid: references of an HTML part are resolved
-        // as KMail always did, the parts stay attachments.)
-        if ( mResources && !part->processed() ) {
+        // A resource of the related root, shown for sure: not an
+        // attachment.  (In a multipart/mixed, cid: references are
+        // resolved as KMail always did, the parts stay attachments.)
+        if ( mResources && shown && !part->processed() ) {
           part->setProcessed( true, false );
           mReader->setResourceHidden( part );
         }
@@ -1159,25 +1157,34 @@ namespace KMail {
     private:
       // What the writer shows the image with: WebKit (an isolated HTML
       // document, the part's mail mode takes data: images only) a data:
-      // URL, KHTML the temporary file.  Images only (not SVG: a document
-      // of its own), loaded ones.
+      // URL, KHTML the temporary file.  Loaded images of a format both
+      // engines show (PNG, JPEG, GIF, BMP) that decode: a broken image is
+      // not shown, its part stays an attachment.  Nothing is decoded
+      // beyond the bound.
       QString makeURL( partNode * part ) {
         if ( part->type() != DwMime::kTypeImage || !part->msgPart().isComplete() )
           return QString::null;
         const QString subtype = QString::fromLatin1( part->msgPart().subtypeStr() ).lower();
-        if ( subtype.isEmpty() || subtype.contains( "svg" ) || subtype.contains( QRegExp( "[^a-z0-9.+-]" ) ) )
+        if ( subtype != "png" && subtype != "jpeg" && subtype != "jpg" && subtype != "pjpeg"
+             && subtype != "gif" && subtype != "bmp" && subtype != "x-ms-bmp" )
           return QString::null;
-        if ( mIsolated ) {
-          const QByteArray data = part->msgPart().bodyDecodedBinary();
-          if ( data.isEmpty() )
-            return QString::null;
+        // a data: URL is at most 4/3 of the decoded size, which is at most
+        // the encoded size (base64, quoted-printable)
+        const unsigned int estimate = part->msgPart().body().size() / 3 * 4 + 64;
+        if ( !mReader->mayUseEmbeddedBytes( 2 * estimate ) )
+          return QString::null;
+        const QByteArray data = part->msgPart().bodyDecodedBinary();
+        QImage image;
+        if ( data.isEmpty() || !image.loadFromData( data ) )
+          return QString::null;
+        if ( mIsolated )
           return "data:image/" + subtype + ";base64," + QString::fromLatin1( KCodecs::base64Encode( data ) );
-        }
         const QString fileName = mReader->writeMessagePartToTempFile( &part->msgPart(), part->nodeId() );
         return fileName.isEmpty() ? QString::null : "file:" + KURL::encode_string( fileName );
       }
 
       KMReaderWin * mReader;
+      const QMap<QString, partNode *> & mParts;
       bool mIsolated, mResources;
     };
   }
@@ -1190,24 +1197,24 @@ namespace KMail {
   // attachments (as KMail always did).  The references are rewritten to
   // the URLs the writer shows the images with (rewriteCidReferences()):
   // no Content-ID is left for the writer to resolve, none can reach a part
-  // of another scope.  A Content-ID two parts of the scope share is
-  // nobody's; a part that cannot be embedded (not an image, not loaded, no
-  // temporary file) stays an attachment.
+  // of another scope.  A Content-ID two children of the scope share is
+  // nobody's; a part that cannot be embedded (not an image of a known
+  // format that decodes, not loaded, beyond the bound) stays an
+  // attachment, and so does one only CSS or a hidden image references.
+  // A scope's Content-IDs are collected once per message (the reader).
   QString ObjectTreeParser::embedRelatedResources( partNode * htmlNode, const QString & html ) {
-    if ( !mReader || !htmlWriter() || html.find( "cid:", 0, false ) < 0 )
+    if ( !mReader || !htmlWriter() )
       return html;
+    if ( html.find( "cid", 0, false ) < 0 && html.find( '&' ) < 0 )
+      return html;   // (cid: can be written with character references)
     partNode * scope = 0;
-    partNode * scopeRoot = 0;
     partNode * mixed = 0;
     for ( partNode * child = htmlNode, * p = htmlNode->parentNode(); p; child = p, p = p->parentNode() ) {
       if ( p->type() == DwMime::kTypeMessage )
         break;
       if ( p->type() == DwMime::kTypeMultipart && p->subType() == DwMime::kSubtypeRelated ) {
-        partNode * root = p->relatedRoot();
-        if ( child == root ) {
+        if ( child == p->relatedRoot() )
           scope = p;
-          scopeRoot = root;
-        }
         break;   // the nearest related only
       }
       if ( !mixed && p->type() == DwMime::kTypeMultipart && p->subType() == DwMime::kSubtypeMixed )
@@ -1218,23 +1225,7 @@ namespace KMail {
       scope = mixed;
     if ( !scope )
       return html;
-
-    ScopeResolver resolver( mReader, htmlWriter()->isolatesHtml(), resources );
-    for ( partNode * child = scope->firstChild(); child; child = child->nextSibling() ) {
-      const QString id = child->contentIdNoBrackets();
-      if ( id.isEmpty() )
-        continue;
-      if ( resolver.byId.contains( id ) )
-        resolver.ambiguous[id] = true;   // also against the root, a multipart
-      if ( child == scopeRoot || child == htmlNode || child->type() == DwMime::kTypeMultipart
-           || child->type() == DwMime::kTypeMessage )
-        resolver.byId[id] = 0;            // not an image to embed
-      else
-        resolver.byId[id] = child;
-    }
-    for ( QMap<QString, partNode *>::Iterator it = resolver.byId.begin(); it != resolver.byId.end(); ++it )
-      if ( !it.data() )
-        resolver.ambiguous[it.key()] = true;
+    ScopeResolver resolver( mReader, mReader->embeddingScope( scope ), htmlWriter()->isolatesHtml(), resources );
     return rewriteCidReferences( html, resolver );
   }
 

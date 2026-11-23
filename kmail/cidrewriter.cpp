@@ -22,6 +22,9 @@
 
 #include <kurl.h>
 
+#include <qregexp.h>
+#include <qvaluelist.h>
+
 namespace {
 
   // HTML's white space (not every QChar::isSpace())
@@ -71,6 +74,23 @@ namespace {
       else if ( name == "gt" ) c = '>';
       else if ( name == "quot" ) c = '"';
       else if ( name == "apos" ) c = '\'';
+      else if ( name == "colon" ) c = ':';
+      else if ( name == "sol" ) c = '/';
+      else if ( name == "num" ) c = '#';
+      else if ( name == "percnt" ) c = '%';
+      else if ( name == "commat" ) c = '@';
+      else if ( name == "period" ) c = '.';
+      else if ( name == "lowbar" ) c = '_';
+      else if ( name == "plus" ) c = '+';
+      else if ( name == "equals" ) c = '=';
+      else if ( name == "quest" ) c = '?';
+      else if ( name == "excl" ) c = '!';
+      else if ( name == "dollar" ) c = '$';
+      else if ( name == "lpar" ) c = '(';
+      else if ( name == "rpar" ) c = ')';
+      else if ( name == "comma" ) c = ',';
+      else if ( name == "semi" ) c = ';';
+      else if ( name == "Tab" ) c = '\t';
       else if ( name.startsWith( "#x" ) || name.startsWith( "#X" ) ) {
         bool ok;
         const uint u = name.mid( 2 ).toUInt( &ok, 16 );
@@ -114,11 +134,11 @@ namespace {
 
   // A cid: URL value (white space around it ignored) and what it is
   // shown with; QString::null if it is none or not known.
-  QString resolveValue( const QString & value, KMail::CidResolver & resolver ) {
+  QString resolveValue( const QString & value, KMail::CidResolver & resolver, bool shown ) {
     const QString v = value.stripWhiteSpace();
     if ( v.length() <= 4 || !matchAt( v, 0, v.length(), "cid:" ) )
       return QString::null;
-    return resolver.urlFor( KURL::decode_string( v.mid( 4 ) ) );
+    return resolver.urlFor( KURL::decode_string( v.mid( 4 ) ), shown );
   }
 
   // url(cid:...) of CSS text; comments and strings skipped.
@@ -164,7 +184,7 @@ namespace {
         }
         while ( j < n && isWs( css[j] ) ) ++j;
         if ( j < n && css[j] == ')' ) {
-          const QString url = plain ? resolveValue( value, resolver ) : QString::null;
+          const QString url = plain ? resolveValue( value, resolver, false ) : QString::null;
           if ( !url.isEmpty() ) {
             out += css.mid( last, i - last ) + "url(\"" + url + "\")";
             last = j + 1;
@@ -187,7 +207,8 @@ namespace {
 } // anon namespace
 
 QString KMail::rewriteCidReferences( const QString & html, CidResolver & resolver ) {
-  if ( html.find( "cid:", 0, false ) < 0 )
+  // cid: may be written with character references (c&#105;d&colon;)
+  if ( html.find( "cid", 0, false ) < 0 && html.find( '&' ) < 0 )
     return html;
   QString out;
   const int n = html.length();
@@ -217,47 +238,87 @@ QString KMail::rewriteCidReferences( const QString & html, CidResolver & resolve
     if ( tag == "image" )
       tag = "img";   // the HTML parser makes it one
     i = e;
-    bool seenSrc = false, seenBackground = false, seenStyle = false;
-    // attributes
+    // the attributes of the tag first (an image's own style can hide it)
+    struct Attribute { QString name; int vs, ve, cs, ce; bool value; };
+    QValueList<Attribute> attributes;
     while ( i < n && html[i] != '>' ) {
       if ( isWs( html[i] ) || html[i] == '/' ) { ++i; continue; }
+      Attribute a;
       const int ns = i;
       ++i;   // the first character is part of the name, even '='
       while ( i < n && !isWs( html[i] ) && html[i] != '/' && html[i] != '>' && html[i] != '=' )
         ++i;
-      const QString name = html.mid( ns, i - ns ).lower();
+      a.name = html.mid( ns, i - ns ).lower();
+      a.value = false;
+      a.vs = a.ve = a.cs = a.ce = i;
       int k = i;
       while ( k < n && isWs( html[k] ) ) ++k;
-      if ( k >= n || html[k] != '=' )
-        continue;   // no value
-      i = k + 1;
-      while ( i < n && isWs( html[i] ) ) ++i;
-      const int vs = i;   // the value, quotes included
-      int cs, ce;         // its characters
-      if ( i < n && ( html[i] == '"' || html[i] == '\'' ) ) {
-        const QChar q = html[i];
-        cs = i + 1;
-        ce = html.find( q, cs );
-        if ( ce < 0 ) ce = n;
-        i = ce < n ? ce + 1 : n;
-      } else {
-        cs = i;
-        while ( i < n && !isWs( html[i] ) && html[i] != '>' ) ++i;
-        ce = i;
+      if ( k < n && html[k] == '=' ) {
+        a.value = true;
+        i = k + 1;
+        while ( i < n && isWs( html[i] ) ) ++i;
+        a.vs = i;   // the value, quotes included
+        if ( i < n && ( html[i] == '"' || html[i] == '\'' ) ) {
+          const QChar q = html[i];
+          a.cs = i + 1;
+          a.ce = html.find( q, a.cs );
+          if ( a.ce < 0 ) a.ce = n;
+          i = a.ce < n ? a.ce + 1 : n;
+        } else {
+          a.cs = i;
+          while ( i < n && !isWs( html[i] ) && html[i] != '>' ) ++i;
+          a.ce = i;
+        }
+        a.ve = i;
       }
-      const int ve = i;
-      // the first of each name counts, as for the browser
-      bool url = false, style = false;
-      if ( name == "src" ) { url = tag == "img" && !seenSrc; seenSrc = true; }
-      else if ( name == "background" ) { url = !seenBackground; seenBackground = true; }
-      else if ( name == "style" ) { style = !seenStyle; seenStyle = true; }
-      if ( !url && !style )
+      attributes.append( a );
+    }
+    // The first of each name counts, as for the browser (also one
+    // without a value).  An image hidden by its own attributes is not
+    // shown: its part stays an attachment (references are rewritten all
+    // the same).  What else hides it (an ancestor, a style sheet) is not
+    // known here: see shown below.
+    bool seenSrc = false, seenBackground = false, seenStyle = false, hidden = false;
+    const bool backgroundShown = tag == "body" || tag == "table" || tag == "td" || tag == "th";
+    const bool showsImage = tag == "img" || backgroundShown;   // only there it matters
+    for ( QValueList<Attribute>::ConstIterator it = attributes.begin(); showsImage && it != attributes.end(); ++it ) {
+      const QString & name = (*it).name;
+      if ( name == "hidden" )
+        hidden = true;
+      else if ( ( name == "width" || name == "height" ) && (*it).value
+                && decodeReferences( html.mid( (*it).cs, (*it).ce - (*it).cs ) ).stripWhiteSpace() == "0" )
+        hidden = true;
+      else if ( name == "style" && !seenStyle && (*it).value ) {
+        static const QRegExp none( "display\\s*:\\s*none" ), invisible( "visibility\\s*:\\s*(hidden|collapse)" ),
+                             transparent( "opacity\\s*:\\s*0(\\.0*)?\\s*(;|!|$)" );
+        const QString css = decodeReferences( html.mid( (*it).cs, (*it).ce - (*it).cs ) ).lower();
+        if ( css.find( none ) >= 0 || css.find( invisible ) >= 0 || css.find( transparent ) >= 0 )
+          hidden = true;
+      }
+      if ( name == "style" )
+        seenStyle = true;   // (marked again below)
+    }
+    seenStyle = false;
+    for ( QValueList<Attribute>::ConstIterator it = attributes.begin(); it != attributes.end(); ++it ) {
+      const QString & name = (*it).name;
+      bool url = false, style = false, shown = false;
+      if ( name == "src" ) {
+        url = tag == "img" && !seenSrc; seenSrc = true;
+        shown = !hidden;
+      } else if ( name == "background" ) {
+        url = backgroundShown && !seenBackground; seenBackground = true;
+        shown = !hidden;
+      } else if ( name == "style" ) {
+        style = !seenStyle; seenStyle = true;
+      }
+      if ( ( !url && !style ) || !(*it).value )
         continue;
-      const QString value = decodeReferences( html.mid( cs, ce - cs ) );
+      const QString value = decodeReferences( html.mid( (*it).cs, (*it).ce - (*it).cs ) );
       QString replacement;
       if ( url ) {
-        replacement = resolveValue( value, resolver );
+        replacement = resolveValue( value, resolver, shown );
       } else {
+        // CSS: whether a declaration shows its image is not known here
         bool changed = false;
         const QString css = rewriteCss( value, resolver, changed );
         if ( changed )
@@ -265,8 +326,8 @@ QString KMail::rewriteCidReferences( const QString & html, CidResolver & resolve
       }
       if ( replacement.isEmpty() )
         continue;
-      out += html.mid( last, vs - last ) + "\"" + escapeAttribute( replacement ) + "\"";
-      last = ve;
+      out += html.mid( last, (*it).vs - last ) + "\"" + escapeAttribute( replacement ) + "\"";
+      last = (*it).ve;
     }
     if ( i < n )
       ++i;   // '>'
