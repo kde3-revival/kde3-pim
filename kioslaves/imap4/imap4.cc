@@ -214,6 +214,10 @@ IMAP4Protocol::get (const KURL & _url)
 
   mProcessedSize = 0;
   imapCommand *cmd = NULL;
+  // assureBox() selects the box unless it is the selected one: then the
+  // counts below come from this SELECT, else from an older one and the
+  // updates since (which need not repeat UIDNEXT)
+  const bool selectsNow = !(getState() == ISTATE_SELECT && aBox == getCurrentBox());
   if (!assureBox (aBox, true)) return;
 
 #ifdef USE_VALIDITY
@@ -288,6 +292,8 @@ IMAP4Protocol::get (const KURL & _url)
       if (selectInfo.uidNextAvailable ())
         outputLineStr ("X-UidNext: " +
                        QString::number(selectInfo.uidNext ()) + "\r\n");
+      if (selectsNow)
+        outputLine ("X-Selected: now\r\n", 17);
       if (selectInfo.flagsAvailable ())
         outputLineStr ("X-Flags: " + QString::number(selectInfo.flags ()) +
                        "\r\n");
