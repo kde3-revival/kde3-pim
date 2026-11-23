@@ -898,6 +898,10 @@ void imapParser::parseExpunge (ulong value, parseString & result)
 {
   Q_UNUSED(value);
   Q_UNUSED(result);
+  // a message of the selected box is gone: the next EXISTS, if the server
+  // sends one, need not come before the count is used (RFC 3501 7.4.1)
+  if (selectInfo.countAvailable () && selectInfo.count () > 0)
+    selectInfo.setCount (selectInfo.count () - 1);
 }
 
 void imapParser::parseAddressList (parseString & inWords, QPtrList<mailAddress>& list)
