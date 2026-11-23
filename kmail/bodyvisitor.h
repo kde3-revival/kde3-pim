@@ -64,7 +64,6 @@ namespace KMail {
        * This is e.g. needed for multipart/signed where all parts have to be loaded 
        */
       static bool parentNeedsLoading( KMMessagePart * part );
-      static bool isRelatedPart( KMMessagePart * part );
       
     protected:
       QPtrList<KMMessagePart> mParts;

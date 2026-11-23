@@ -1155,6 +1155,16 @@ namespace KMail {
           return QString::null;   // tried once: stays an attachment
         QString url = mReader->embeddedResourceURL( part );
         if ( url.isEmpty() ) {
+          if ( !isEmbeddableImage( part ) ) {
+            mReader->setEmbeddingFailed( part );
+            return QString::null;   // stays an attachment
+          }
+          if ( !part->msgPart().isComplete() ) {
+            // IMAP load on demand: the image is fetched (within the bound)
+            // and the message shown again; an attachment until then
+            mReader->requestEmbeddedPart( part );
+            return QString::null;
+          }
           url = makeURL( part );
           // kept for the message: within the bound
           if ( url.isEmpty() || !mReader->useEmbeddedBytes( url.length() ) ) {
@@ -1177,19 +1187,22 @@ namespace KMail {
       }
 
     private:
+      // An image of a format both engines show (PNG, JPEG, GIF, BMP).
+      static bool isEmbeddableImage( partNode * part ) {
+        if ( part->type() != DwMime::kTypeImage )
+          return false;
+        const QString subtype = QString::fromLatin1( part->msgPart().subtypeStr() ).lower();
+        return subtype == "png" || subtype == "jpeg" || subtype == "jpg" || subtype == "pjpeg"
+               || subtype == "gif" || subtype == "bmp" || subtype == "x-ms-bmp";
+      }
+
       // What the writer shows the image with: WebKit (an isolated HTML
       // document, the part's mail mode takes data: images only) a data:
-      // URL, KHTML the temporary file.  Loaded images of a format both
-      // engines show (PNG, JPEG, GIF, BMP) that decode: a broken image is
-      // not shown, its part stays an attachment.  Nothing is decoded
-      // beyond the bound.
+      // URL, KHTML the temporary file.  Loaded images (isEmbeddableImage())
+      // that decode: a broken image is not shown, its part stays an
+      // attachment.  Nothing is decoded beyond the bound.
       QString makeURL( partNode * part ) {
-        if ( part->type() != DwMime::kTypeImage || !part->msgPart().isComplete() )
-          return QString::null;
         const QString subtype = QString::fromLatin1( part->msgPart().subtypeStr() ).lower();
-        if ( subtype != "png" && subtype != "jpeg" && subtype != "jpg" && subtype != "pjpeg"
-             && subtype != "gif" && subtype != "bmp" && subtype != "x-ms-bmp" )
-          return QString::null;
         // a data: URL is at most 4/3 of the decoded size, which is at most
         // the encoded size (base64, quoted-printable)
         const unsigned int estimate = part->msgPart().encodedSize() / 3 * 4 + 64;

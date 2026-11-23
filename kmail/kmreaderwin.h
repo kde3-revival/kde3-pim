@@ -111,6 +111,11 @@ public:
   /** An image that could not be embedded (tried once per message). */
   bool embeddingFailed( partNode * node ) const { return mFailedResources.contains( node ); }
   void setEmbeddingFailed( partNode * node ) { mFailedResources[node] = true; }
+  /** IMAP load on demand: @p node, an image the HTML shown embeds, is not
+      loaded yet.  It is fetched after the parse (once per message, within
+      the bound of embedded bytes); the message is shown again when it
+      arrives. */
+  void requestEmbeddedPart( partNode * node );
 
   KMReaderWin( QWidget *parent,
 	       QWidget *mainWindow,
@@ -533,6 +538,12 @@ private:
   QMap<partNode *, partNode *> mRelatedRoots;
   QMap<partNode *, bool> mFailedResources;
   void forgetEmbeddedResources();
+  // images to fetch (IMAP load on demand), by part specifier: requested for
+  // the message shown, still to request after the parse
+  QMap<QString, bool> mRequestedParts;
+  QStringList mPendingParts;
+  unsigned int mRequestedBytes;
+  void fetchRequestedParts( KMMessage * msg );
   KMMessage *mMessage;
   // widgets:
   QSplitter * mSplitter;
