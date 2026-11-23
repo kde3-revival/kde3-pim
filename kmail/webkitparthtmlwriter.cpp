@@ -42,6 +42,7 @@
 #include <kstandarddirs.h>
 #include <kurl.h>
 
+#include <qapplication.h>
 #include <qdir.h>
 #include <qfile.h>
 #include <qfileinfo.h>
@@ -110,9 +111,11 @@ namespace KMail {
   WebKitPartHtmlWriter::WebKitPartHtmlWriter( KParts::ReadOnlyPart * part, QObject * parent, const char * name )
     : QObject( parent, name ), HtmlWriter(), mPart( part ), mBlank( false ),
       mLoadTimer( 0, "mLoadTimer" ), mSerial( 0 ),
+      mLoadedAfterCover( false ), mUncoverTimer( 0, "mUncoverTimer" ),
       mStats( getenv( "KMAIL_WEBKIT_STATS" ) != 0 ), mEndTime( 0 )
   {
     connect( &mLoadTimer, SIGNAL(timeout()), SLOT(slotLoad()) );
+    connect( &mUncoverTimer, SIGNAL(timeout()), SLOT(slotUncover()) );
     if ( part )
       connect( part, SIGNAL(completed()), SLOT(slotCompleted()) );
   }
@@ -354,6 +357,8 @@ namespace KMail {
     if ( mStats )
       fprintf( stderr, "kmail-webkit: document %u: end() -> files written %lld ms (%lld ms writing)\n",
                mSerial, nowMs() - mEndTime, nowMs() - start );
+    if ( mCover && mCover->isVisible() )
+      mLoadedAfterCover = true;
     mPart->openURL( KURL::fromPathOrURL( index_html ) );
   }
 
@@ -365,6 +370,45 @@ namespace KMail {
   void WebKitPartHtmlWriter::slotCompleted() {
     if ( mStats )
       fprintf( stderr, "kmail-webkit: document %u: end() -> loaded %lld ms\n", mSerial, nowMs() - mEndTime );
+    // The part paints the new document after its load: the cover stays a
+    // little longer, never the previous message after the cover.
+    if ( mCover && mCover->isVisible() && mLoadedAfterCover && !mLoadTimer.isActive() )
+      mUncoverTimer.start( 80, true );
+  }
+
+  void WebKitPartHtmlWriter::clearView( const QColor & background ) {
+    if ( !mPart || !mPart->widget() )
+      return;
+    QWidget * view = mPart->widget();
+    if ( !mCover ) {
+      mCover = new QWidget( view, "kmail-webkit-cover", WRepaintNoErase );
+      mCover->setFocusPolicy( QWidget::NoFocus );
+      view->installEventFilter( this );
+    }
+    mUncoverTimer.stop();
+    mLoadedAfterCover = false;
+    // The X server fills the window with its background colour when it
+    // is mapped: blank at once, before KMail prepares the next message.
+    mCover->setPaletteBackgroundColor( background );
+    mCover->setGeometry( view->rect() );
+    mCover->raise();
+    mCover->show();
+    QApplication::flushX();
+    if ( mStats )
+      fprintf( stderr, "kmail-webkit: cleared\n" );
+  }
+
+  void WebKitPartHtmlWriter::slotUncover() {
+    if ( mCover )
+      mCover->hide();
+    if ( mStats )
+      fprintf( stderr, "kmail-webkit: document %u: end() -> uncovered %lld ms\n", mSerial, nowMs() - mEndTime );
+  }
+
+  bool WebKitPartHtmlWriter::eventFilter( QObject * o, QEvent * e ) {
+    if ( mCover && mPart && o == mPart->widget() && e->type() == QEvent::Resize )
+      mCover->setGeometry( mPart->widget()->rect() );
+    return false;
   }
 
 } // namespace KMail

@@ -1248,6 +1248,17 @@ void KMReaderWin::setMsg(KMMessage* aMsg, bool force)
   if (!force && aMsg && mLastSerNum != 0 && aMsg->getMsgSerNum() == mLastSerNum)
     return;
 
+  // WebKit: another message (or none) at once clears the reader; the part
+  // would keep the previous message until the next one is ready (or
+  // downloaded, with IMAP load on demand).
+  if ( mWebWriter && mMsgDisplay ) {
+    const bool other = aMsg ? ( aMsg->getMsgSerNum() != mLastSerNum ||
+                                ( mLastSerNum == 0 && aMsg != mMessage ) )
+                            : ( mLastSerNum != 0 || mMessage );
+    if ( other )
+      mWebWriter->clearView( mCSSHelper->backgroundColor() );
+  }
+
   // (de)register as observer
   if (aMsg && message())
     message()->detach( this );

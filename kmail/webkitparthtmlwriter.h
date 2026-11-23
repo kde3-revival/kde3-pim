@@ -35,6 +35,7 @@
 
 #include "interfaces/htmlwriter.h"
 
+#include <qcolor.h>
 #include <qguardedptr.h>
 #include <qmap.h>
 #include <qobject.h>
@@ -82,6 +83,13 @@ namespace KMail {
 
     /** The document being written shows no message (see class doc). */
     void setBlank() { mBlank = true; }
+    /** Another message (or none) is going to be shown: the part is
+        covered at once with @p background, so that the previous message
+        is not shown while the next one is prepared, downloaded or
+        loaded (the part shows a new document only once it is ready).
+        The cover goes when a document loaded after it is shown. */
+    void clearView( const QColor & background );
+
     /** HTML for KMail's \<div id="attachmentInjectionPoint"\>. */
     void setAttachmentList( const QString & html ) { mAttachmentList = html; }
 
@@ -92,9 +100,11 @@ namespace KMail {
   private slots:
     void slotLoad();
     void slotCompleted();
+    void slotUncover();
 
   private:
     void forgetLinks();
+    bool eventFilter( QObject * o, QEvent * e );
     QString messageDirectory();
     QString linkIntoMessage( const QString & dir, const QString & path, int index );
     QString resolveCidUrls( const QString & html ) const;
@@ -118,6 +128,9 @@ namespace KMail {
     QStringList mDirs;      // message directories, oldest first
     QString mLinkSecret;
     QMap<QString, QString> mLinks;   // kmail-link: URL -> original href
+    QGuardedPtr<QWidget> mCover;   // over the part's widget, see clearView()
+    bool mLoadedAfterCover;
+    QTimer mUncoverTimer;
     bool mStats;
     long long mEndTime;     // statistics: end() of the document shown last
   };
