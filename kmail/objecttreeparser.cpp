@@ -1210,11 +1210,12 @@ namespace KMail {
           return QString::null;
         const QByteArray data = part->msgPart().bodyDecodedBinary();
         // the bitmap the decoder allocates, from the headers, before
-        // decoding: at most 64 MB (16 megapixels of 32 bits)
-        uint width = 0, height = 0, bytesPerPixel = 0;
-        if ( data.isEmpty() || !decoderBitmapSize( data, width, height, bytesPerPixel )
+        // decoding, and its colour table: at most 64 MB (16 megapixels of
+        // 32 bits)
+        uint width = 0, height = 0, bytesPerPixel = 0, tableBytes = 0;
+        if ( data.isEmpty() || !decoderBitmapSize( data, width, height, bytesPerPixel, &tableBytes )
              || width == 0 || height == 0 || width > 65535 || height > 65535
-             || (unsigned long long)width * height * bytesPerPixel > 64ULL * 1024 * 1024 )
+             || (unsigned long long)width * height * bytesPerPixel + tableBytes > 64ULL * 1024 * 1024 )
           return QString::null;
         QImage image;
         if ( !image.loadFromData( data ) )

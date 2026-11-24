@@ -32,11 +32,16 @@ namespace KMail {
    * at once, its own buffers included).  The dimensions are the ones the
    * decoder really uses: for a GIF the frames can replace the logical
    * screen (Qt's QGIFFormat), for a BMP the header kind decides their size.
-   * False if they cannot be read, and for a GIF whose later frame would
-   * make Qt's decoder write beyond the bitmap of the first one.
+   * @p tableBytes (if given): the colour table the decoder allocates
+   * from the header, besides the bitmap (a BMP's; 0 for the other
+   * formats, whose tables are 256 entries at most).
+   * False if they cannot be read, for a GIF whose later frame would
+   * make Qt's decoder write beyond the bitmap of the first one, and for
+   * a BMP whose colour table Qt refuses or would make larger than 256
+   * entries (biClrUsed).
    */
   bool decoderBitmapSize( const QByteArray & data, unsigned int & width, unsigned int & height,
-                          unsigned int & bytesPerPixel );
+                          unsigned int & bytesPerPixel, unsigned int * tableBytes = 0 );
 
 } // namespace KMail
 

@@ -117,9 +117,11 @@ namespace {
 } // anon namespace
 
 bool KMail::decoderBitmapSize( const QByteArray & d, unsigned int & width, unsigned int & height,
-                               unsigned int & bytesPerPixel ) {
+                               unsigned int & bytesPerPixel, unsigned int * tableBytes ) {
   const unsigned int n = d.size();
   bytesPerPixel = 4;   // 32-bit bitmaps (or less)
+  if ( tableBytes )
+    *tableBytes = 0;
   if ( n >= 24 && (uchar)d[0] == 0x89 && d[1] == 'P' && d[2] == 'N' && d[3] == 'G'
        && d[12] == 'I' && d[13] == 'H' && d[14] == 'D' && d[15] == 'R' ) {
     width = be32( d, 16 );
@@ -136,16 +138,39 @@ bool KMail::decoderBitmapSize( const QByteArray & d, unsigned int & width, unsig
     // as Qt's read_dib(): a header of 40 bytes and more (Windows, OS/2 2,
     // their extensions) has 32-bit dimensions, a shorter one (the 12-byte
     // core header of Windows 2 and OS/2 1) 16-bit ones; both signed
-    int w, h;
+    int w, h, bits;
+    unsigned int colorsUsed = 0;   // none in a core header
     if ( (int)le32( d, 14 ) >= 40 ) {
-      if ( n < 26 )
-        return false;
+      if ( n < 54 )
+        return false;   // Qt reads the whole header (or stops)
       w = (int)le32( d, 18 );
       h = (int)le32( d, 22 );
+      bits = le16( d, 28 );
+      colorsUsed = le32( d, 46 );
     } else {
+      if ( n < 26 )
+        return false;
       w = (short)le16( d, 18 );
       h = (short)le16( d, 20 );
+      bits = le16( d, 24 );
     }
+    // The colour table Qt allocates before reading it: biClrUsed
+    // entries (of 4 bytes), 2^bits without one, none for 16 bits and
+    // more.  Qt (since the kde3-qt image bounds) refuses more than 256
+    // and so does this; an older Qt allocates any number, even for a
+    // 58-byte file: refused before Qt sees it.  A bit depth Qt does not
+    // read (only 1, 4, 8, 16, 24 and 32) is refused too, as Qt does.
+    unsigned int colors;
+    if ( bits == 16 || bits == 24 || bits == 32 )
+      colors = 0;
+    else if ( bits == 1 || bits == 4 || bits == 8 )
+      colors = colorsUsed ? colorsUsed : 1u << bits;
+    else
+      return false;
+    if ( colors > 256 )
+      return false;
+    if ( tableBytes )
+      *tableBytes = colors * 4;
     width = w < 0 ? -(unsigned int)w : w;
     height = h < 0 ? -(unsigned int)h : h;
     return true;
