@@ -273,14 +273,6 @@ NewMailBalloon::NewMailBalloon( KMMainWidget * mainWidget, const char * name )
     mShown( 0 ),
     mPendingSerNum( 0 )
 {
-  connect( kmkernel->folderMgr(), SIGNAL( msgAdded( KMFolder*, Q_UINT32 ) ),
-           SLOT( slotMsgAdded( KMFolder*, Q_UINT32 ) ) );
-  connect( kmkernel->imapFolderMgr(), SIGNAL( msgAdded( KMFolder*, Q_UINT32 ) ),
-           SLOT( slotMsgAdded( KMFolder*, Q_UINT32 ) ) );
-  connect( kmkernel->dimapFolderMgr(), SIGNAL( msgAdded( KMFolder*, Q_UINT32 ) ),
-           SLOT( slotMsgAdded( KMFolder*, Q_UINT32 ) ) );
-  connect( kmkernel->acctMgr(), SIGNAL( checkedMail( bool, bool, const QMap<QString, int> & ) ),
-           SLOT( slotMailChecked() ) );
 }
 
 // The balloon is a window of its own: it goes with us.
@@ -297,28 +289,6 @@ void NewMailBalloon::readConfig()
     return;
   mEntries.clear();
   closeBalloon();
-}
-
-void NewMailBalloon::slotMsgAdded( KMFolder * folder, Q_UINT32 serNum )
-{
-  if ( !folder || !serNum )
-    return;
-  QValueList<Q_UINT32> & added = mAdded[ folder->idString() ];
-  added.append( serNum );
-  if ( added.count() > maxAdded )
-    added.remove( added.begin() );
-}
-
-// Every check: what was added before it is not new any more (after the
-// main widget has seen it, newMail()).
-void NewMailBalloon::slotMailChecked()
-{
-  QTimer::singleShot( 0, this, SLOT( forgetAdded() ) );
-}
-
-void NewMailBalloon::forgetAdded()
-{
-  mAdded.clear();
 }
 
 // The folders whose new mail gets a balloon: those of the tray icon's
@@ -351,69 +321,43 @@ bool NewMailBalloon::isShownInFront( KMFolder * folder ) const
   return KWin::windowInfo( window->winId(), NET::WMDesktop ).isOnCurrentDesktop();
 }
 
-// The new messages of @p folder (@p count of them) in @p entry: the last
-// ones added to it that are still there and unread (and no spam), the
-// newest last.  Those whose headers are not here (IMAP folders not
-// listed by the check) are only counted.
-void NewMailBalloon::collect( KMFolder * folder, int count, Entry & entry )
+// The new mail of a check (@p newInFolder: how many messages in which
+// folder) in an entry: the new messages of the check
+// (AccountManager::newMessages()) where they are now, unless they are
+// read, spam or ignored, or their folders do not count; the rest of the
+// counted messages (IMAP folders the check did not list) only counted.
+// Returns whether any folder counted for new mail at all.
+bool NewMailBalloon::collect( const QMap<QString, int> & newInFolder, Entry & entry )
 {
-  const bool first = entry.count == 0;
-  entry.count += count;
-  entry.folderIds.append( folder->idString() );
-  QValueList<Item> items;
-  QMap<QString, QValueList<Q_UINT32> >::ConstIterator added = mAdded.find( folder->idString() );
-  if ( added != mAdded.end() ) {
-    const QValueList<Q_UINT32> & serNums = *added;
+  // the new messages found, read or not, per folder id
+  QMap<QString, int> found;
+  const QValueList<Q_UINT32> & serNums = kmkernel->acctMgr()->newMessages();
+  for ( QValueList<Q_UINT32>::ConstIterator it = serNums.begin(); it != serNums.end(); ++it ) {
+    KMFolder * folder = 0;
+    int idx = -1;
+    KMMsgDict::instance()->getLocation( *it, &folder, &idx );
+    if ( !folder || idx < 0 )
+      continue;
+    found[ folder->idString() ] += 1;
+    if ( !counts( folder ) || isShownInFront( folder ) )
+      continue;
     KMFolderOpener opener( folder, "newmailballoon" );
-    QValueList<Q_UINT32>::ConstIterator it = serNums.end();
-    while ( it != serNums.begin() && (int)items.count() < count ) {
-      --it;
-      KMFolder * where = 0;
-      int idx = -1;
-      KMMsgDict::instance()->getLocation( *it, &where, &idx );
-      if ( where != folder || idx < 0 )
-        continue;
-      const KMMsgBase * msgBase = folder->getMsgBase( idx );
-      if ( !msgBase || !( msgBase->isNew() || msgBase->isUnread() ) || msgBase->isSpam() ||
-           msgBase->isIgnored() )
-        continue;
-      bool duplicate = false;
-      for ( QValueList<Item>::ConstIterator item = items.begin(); item != items.end(); ++item )
-        duplicate = duplicate || ( *item ).serNum == *it;
-      if ( duplicate )
-        continue;
+    const KMMsgBase * msgBase = folder->getMsgBase( idx );
+    if ( !msgBase || !( msgBase->isNew() || msgBase->isUnread() ) || msgBase->isSpam() ||
+         msgBase->isIgnored() )
+      continue;
+    entry.serNums.append( *it );
+    if ( !entry.folderIds.contains( folder->idString() ) )
+      entry.folderIds.append( folder->idString() );
+    if ( entry.items.count() < maxItems ) {
       Item item;
       item.serNum = *it;
       item.from = squash( msgBase->fromStrip(), 200 );
       item.subject = squash( msgBase->subject(), 200 );
-      items.prepend( item );
-      // One message: the start of its text and the sender's picture,
-      // when the message is here already (not only its headers).
-      if ( first && count == 1 ) {
-        const bool unGet = !msgBase->isMessage();
-        KMMessage * msg = folder->getMsg( idx );
-        if ( msg ) {
-          if ( msg->isComplete() )
-            entry.preview = squash( previewOf( msg ), 200 );
-          entry.picture = pictureOf( msg );
-          if ( unGet )
-            folder->unGetMsg( idx );
-        }
-      }
+      entry.items.append( item );
     }
   }
-  for ( QValueList<Item>::ConstIterator it = items.begin(); it != items.end(); ++it ) {
-    if ( entry.items.count() < maxItems )
-      entry.items.append( *it );
-    entry.serNums.append( ( *it ).serNum );
-  }
-  if ( (int)items.count() < count )
-    entry.unknown[ folder->label() ] += count - items.count();
-}
 
-bool NewMailBalloon::newMail( const QMap<QString, int> & newInFolder, const QString & text )
-{
-  Entry entry;
   bool any = false;
   QStringList ids = newInFolder.keys();
   ids.sort();
@@ -422,17 +366,47 @@ bool NewMailBalloon::newMail( const QMap<QString, int> & newInFolder, const QStr
     if ( !folder || folder->ignoreNewMail() )
       continue;
     any = true;
-    const int count = newInFolder[ *it ];
-    if ( count > 0 && counts( folder ) && !isShownInFront( folder ) )
-      collect( folder, count, entry );
+    if ( !counts( folder ) || isShownInFront( folder ) )
+      continue;
+    const int rest = newInFolder[ *it ] - found[ *it ];
+    if ( rest <= 0 )
+      continue;
+    entry.unknown[ *it ] += rest;
+    if ( !entry.folderIds.contains( *it ) )
+      entry.folderIds.append( *it );
   }
-  mAdded.clear();
-  if ( !any )
+  entry.count = entry.serNums.count();
+  for ( QMap<QString, int>::ConstIterator it = entry.unknown.begin(); it != entry.unknown.end(); ++it )
+    entry.count += it.data();
+
+  // One message: the start of its text and the sender's picture, when
+  // the message is here already (not only its headers).
+  if ( entry.count == 1 && entry.serNums.count() == 1 ) {
+    KMFolder * folder = 0;
+    int idx = -1;
+    KMMsgDict::instance()->getLocation( entry.serNums.first(), &folder, &idx );
+    if ( folder && idx >= 0 ) {
+      KMFolderOpener opener( folder, "newmailballoon" );
+      const KMMsgBase * msgBase = folder->getMsgBase( idx );
+      const bool unGet = msgBase && !msgBase->isMessage();
+      KMMessage * msg = msgBase ? folder->getMsg( idx ) : 0;
+      if ( msg ) {
+        if ( msg->isComplete() )
+          entry.preview = squash( previewOf( msg ), 200 );
+        entry.picture = pictureOf( msg );
+        if ( unGet )
+          folder->unGetMsg( idx );
+      }
+    }
+  }
+  return any;
+}
+
+bool NewMailBalloon::newMail( const QMap<QString, int> & newInFolder, const QString & text )
+{
+  Entry entry;
+  if ( !collect( newInFolder, entry ) )
     return false;
-  if ( entry.count != 1 ) {
-    entry.preview = QString::null;
-    entry.picture = QImage();
-  }
 
   // KNotify: the user chooses in Configure Notifications (a passive
   // popup by default).  Its passive popup is the balloon, unless that
@@ -534,8 +508,11 @@ void NewMailBalloon::showBalloon()
     if ( more > 0 && !entry.items.isEmpty() ) {
       lines.append( i18n( "and 1 more", "and %n more", more ) );
     } else if ( more > 0 && entry.folderIds.count() > 1 ) {
-      for ( QMap<QString, int>::ConstIterator it = entry.unknown.begin(); it != entry.unknown.end(); ++it )
-        lines.append( i18n( "1 in %1", "%n in %1", it.data() ).arg( isolated( squash( it.key(), 40 ) ) ) );
+      for ( QMap<QString, int>::ConstIterator it = entry.unknown.begin(); it != entry.unknown.end(); ++it ) {
+        KMFolder * folder = kmkernel->findFolderById( it.key() );
+        if ( folder )
+          lines.append( i18n( "1 in %1", "%n in %1", it.data() ).arg( isolated( squash( folder->label(), 40 ) ) ) );
+      }
     }
   }
   if ( picture.isNull() )

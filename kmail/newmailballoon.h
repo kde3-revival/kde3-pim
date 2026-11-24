@@ -64,9 +64,6 @@ private slots:
   void slotTimedOut();
   void slotBalloonDestroyed();
   void slotHeadersUpdated();
-  void slotMsgAdded( KMFolder * folder, Q_UINT32 serNum );
-  void slotMailChecked();
-  void forgetAdded();
 
 private:
   // A new message the balloon can tell about.
@@ -81,8 +78,8 @@ private:
     int count;                  // new messages in all
     QValueList<Item> items;     // the first ones known here (at most maxItems)
     QValueList<Q_UINT32> serNums; // all the ones known here
-    QStringList folderIds;      // the folders, the first first
-    QMap<QString, int> unknown; // folder label: new messages not known here
+    QStringList folderIds;      // their folders, the first first
+    QMap<QString, int> unknown; // folder id: new messages not known here
     QString preview;            // the start of the text (one message)
     QImage picture;             // the sender's (one message)
   };
@@ -91,7 +88,7 @@ private:
 
   bool counts( KMFolder * folder ) const;
   bool isShownInFront( KMFolder * folder ) const;
-  void collect( KMFolder * folder, int count, Entry & entry );
+  bool collect( const QMap<QString, int> & newInFolder, Entry & entry );
   bool stillNew( const Entry & entry ) const;
   void closeBalloon( bool byItself = false );
   void next();
@@ -105,10 +102,6 @@ private:
   // one that goes otherwise (a right or middle click hides it, without
   // a signal) was dismissed.
   const KBalloon * mShown;
-  // The messages added to each folder (by id) since the last check: the
-  // new ones are among them (the newest last; at most maxAdded each).
-  QMap<QString, QValueList<Q_UINT32> > mAdded;
-  enum { maxAdded = 200 };
   Q_UINT32 mPendingSerNum;          // to select once the headers are there
   QGuardedPtr<KMFolder> mPendingFolder;
 };
