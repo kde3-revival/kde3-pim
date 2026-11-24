@@ -1950,9 +1950,14 @@ void KMReaderWin::requestEmbeddedPart( partNode * node )
   const QString specifier = node->msgPart().partSpecifier();
   if ( specifier.isEmpty() || mRequestedParts.contains( specifier ) )
     return;
-  // its size from the BODYSTRUCTURE (encoded); the data: URL and a copy
-  // of it must fit too (see ObjectTreeParser's ScopeResolver)
-  const unsigned int size = node->dwPart() ? node->dwPart()->BodySize() : 0;
+  // its size from the BODYSTRUCTURE (encoded; as large as an int holds
+  // for a larger one, KMMessagePart); 0 when not known: not fetched (it
+  // could be any size).  The data: URL and a copy of it must fit too
+  // (see ObjectTreeParser's ScopeResolver).
+  const int signedSize = node->dwPart() ? node->dwPart()->BodySize() : 0;
+  if ( signedSize <= 0 )
+    return;   // stays an attachment (a click loads it)
+  const unsigned int size = signedSize;
   const unsigned int estimate = size / 3 * 4 + 64;
   if ( mRequestedParts.count() >= requestedPartsLimit || size > embeddedBytesLimit
        || mRequestedBytes > embeddedBytesLimit - size || !mayUseEmbeddedBytes( 2 * estimate ) )

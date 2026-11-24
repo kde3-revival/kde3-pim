@@ -23,6 +23,7 @@
 #include <qtextcodec.h>
 
 #include <assert.h>
+#include <limits.h>
 
 using namespace KMime;
 
@@ -49,7 +50,11 @@ KMMessagePart::KMMessagePart( QDataStream & stream )
   mType = mOriginalContentTypeStr.left(sep);
   mSubtype = mOriginalContentTypeStr.mid(sep+1);
 
-  mBodyDecodedSize = size;
+  // The size the server advertises (IMAP BODYSTRUCTURE) is 64 bits wide
+  // here: one beyond what an int holds stays as large as possible (a
+  // negative size would mean "not known" and become that of the empty
+  // body not loaded yet, 0; a truncated one could be anything).
+  mBodyDecodedSize = size > (unsigned long)INT_MAX ? INT_MAX : (int)size;
 }
 
 
