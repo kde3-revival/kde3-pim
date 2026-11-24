@@ -446,11 +446,25 @@ bool NewMailBalloon::newMail( const QMap<QString, int> & newInFolder, const QStr
   return true;
 }
 
-// Whether the messages of @p entry are still there and unread (one at
-// least; none known: only counted, they may be).
-bool NewMailBalloon::stillNew( const Entry & entry ) const
+// Whether @p entry is still worth a balloon: one of its messages is
+// still there and unread, or one of the folders of its messages only
+// counted is still there.  The folders that are gone leave it.
+bool NewMailBalloon::stillNew( Entry & entry ) const
 {
-  if ( entry.serNums.isEmpty() )
+  QStringList gone;
+  for ( QStringList::ConstIterator it = entry.folderIds.begin(); it != entry.folderIds.end(); ++it ) {
+    if ( !kmkernel->findFolderById( *it ) )
+      gone.append( *it );
+  }
+  for ( QStringList::ConstIterator it = gone.begin(); it != gone.end(); ++it ) {
+    entry.folderIds.remove( *it );
+    QMap<QString, int>::Iterator unknown = entry.unknown.find( *it );
+    if ( unknown != entry.unknown.end() ) {
+      entry.count -= unknown.data();
+      entry.unknown.remove( unknown );
+    }
+  }
+  if ( !entry.unknown.isEmpty() )
     return true;
   for ( QValueList<Q_UINT32>::ConstIterator it = entry.serNums.begin(); it != entry.serNums.end(); ++it ) {
     KMFolder * folder = 0;
@@ -463,7 +477,7 @@ bool NewMailBalloon::stillNew( const Entry & entry ) const
     if ( msgBase && ( msgBase->isNew() || msgBase->isUnread() ) )
       return true;
   }
-  return !entry.unknown.isEmpty();
+  return false;
 }
 
 // The first entry in a balloon at the tray icon (in the corner of the

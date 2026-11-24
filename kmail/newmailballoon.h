@@ -89,7 +89,7 @@ private:
   bool counts( KMFolder * folder ) const;
   bool isShownInFront( KMFolder * folder ) const;
   bool collect( const QMap<QString, int> & newInFolder, Entry & entry );
-  bool stillNew( const Entry & entry ) const;
+  bool stillNew( Entry & entry ) const;
   void closeBalloon( bool byItself = false );
   void next();
   void showMessage( const Entry & entry );
