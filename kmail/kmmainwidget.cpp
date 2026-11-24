@@ -2140,7 +2140,13 @@ void KMMainWidget::showOfflinePage()
 //-----------------------------------------------------------------------------
 void KMMainWidget::slotMsgSelected(KMMessage *msg)
 {
-  if ( msg && msg->parent() && !msg->isComplete() )
+  // IMAP load on demand: a message shown before whose parts are still
+  // arriving (images its HTML embeds, fetched by the reader) is shown
+  // again at once, the parts update it as they arrive; the reader no
+  // longer waits for the message selected before
+  const bool partsArriving = msg && msg->parent() && !msg->isComplete()
+                             && msg->transferInProgress() && msg->readyToShow();
+  if ( msg && msg->parent() && !msg->isComplete() && !partsArriving )
   {
     if ( msg->transferInProgress() )
       return;
@@ -2157,6 +2163,8 @@ void KMMainWidget::slotMsgSelected(KMMessage *msg)
             mMsgView, SLOT(slotMessageArrived(KMMessage*)));
     mJob->start();
   } else {
+    if ( partsArriving )
+      mMsgView->setWaitingForSerNum( 0 );
     mMsgView->setMsg(msg);
   }
   // reset HTML override to the folder setting
