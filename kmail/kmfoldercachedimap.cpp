@@ -498,12 +498,15 @@ int KMFolderCachedImap::addMsgInternal( KMMessage* msg, bool newMail,
 
   // Add the message
   rc = KMFolderMaildir::addMsg(msg, index_return);
-  if ( newMail && !rc )
-    kmkernel->acctMgr()->addNewMessage( account(), msg->getMsgSerNum(), folder()->idString() );
 
-  if( newMail && ( imapPath() == "/INBOX/" || ( !GlobalSettings::self()->filterOnlyDIMAPInbox()
+  const bool filter = newMail && ( imapPath() == "/INBOX/" || ( !GlobalSettings::self()->filterOnlyDIMAPInbox()
       && (userRights() <= 0 || userRights() & ACLJobs::Administer )
-      && (contentsType() == ContentsTypeMail || GlobalSettings::self()->filterGroupwareFolders()) ) ) )
+      && (contentsType() == ContentsTypeMail || GlobalSettings::self()->filterGroupwareFolders()) ) );
+  // New mail counted here (filtered: where the filters put it, recorded
+  // by processNewMsg())
+  if ( newMail && !filter && !rc )
+    kmkernel->acctMgr()->addNewMessage( account(), msg->getMsgSerNum(), folder()->idString() );
+  if( filter )
     // This is a new message. Filter it
     mAccount->processNewMsg( msg );
 
