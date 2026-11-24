@@ -2840,10 +2840,15 @@ IMAP4Protocol::deselectBox ()
     currentBox = QString::null;
     return true;
   }
-  // READ-ONLY only as the response code, which begins the text (RFC 3501
-  // 7.1): "OK [READ-WRITE] ... [READ-ONLY]" is no read-only selection
-  if (result == "OK"
-      && resultInfo.stripWhiteSpace ().left (11).upper () == "[READ-ONLY]")
+  // READ-ONLY only as the response code, which begins the text and is
+  // followed by a space (RFC 3501 7.1, 9: "[" resp-text-code "]" SP text):
+  // "OK [READ-WRITE] ... [READ-ONLY]" or "[READ-ONLY]junk" is no read-only
+  // selection
+  uint start = 0;
+  while (start < resultInfo.length () && resultInfo[start].isSpace ())
+    ++start;
+  if (result == "OK" && resultInfo.mid (start, 11).upper () == "[READ-ONLY]"
+      && resultInfo.length () > start + 11 && resultInfo[start + 11] == ' ')
   {
     // a box of that name exists (or the server made one): it is selected
     // now, read-only, and the earlier box is not.  CLOSE of a box selected
