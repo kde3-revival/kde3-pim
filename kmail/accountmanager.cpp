@@ -372,14 +372,19 @@ void AccountManager::clearTotalNew()
 }
 
 //-----------------------------------------------------------------------------
-void AccountManager::addNewMessage( Q_UINT32 serNum )
+void AccountManager::addNewMessage( const KMAccount * account, Q_UINT32 serNum, const QString & folderId )
 {
-  if ( !serNum || mAcctChecking.isEmpty() || mTotalNewMessages.count() >= maxNewMessages )
+  if ( !serNum || !account || mTotalNewMessages.count() >= maxNewMessages )
+    return;
+  if ( !mAcctChecking.contains( const_cast<KMAccount*>( account ) ) )
     return;
   if ( mTotalNewMessageSet.contains( serNum ) )
     return;
   mTotalNewMessageSet.insert( serNum, true );
-  mTotalNewMessages.append( serNum );
+  NewMessage message;
+  message.serNum = serNum;
+  message.folderId = folderId;
+  mTotalNewMessages.append( message );
 }
 
 //-----------------------------------------------------------------------------

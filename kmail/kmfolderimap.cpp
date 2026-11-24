@@ -1651,7 +1651,7 @@ void KMFolderImap::slotGetMessagesData(KIO::Job * job, const QByteArray & data)
         flagsToStatus((KMMsgBase*)msg, flags, true, mUploadAllFlags ? 31 : mPermanentFlags);
         // A message new on the server during a mail check: new mail
         if ( !cached && uid > lastUidBefore && msg->isNew() )
-          kmkernel->acctMgr()->addNewMessage( msg->getMsgSerNum() );
+          kmkernel->acctMgr()->addNewMessage( account(), msg->getMsgSerNum(), folder()->idString() );
         // set the correct size
         msg->setMsgSizeServer( msg->headerField("X-Length").toUInt() );
         msg->setUID(uid);

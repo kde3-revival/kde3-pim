@@ -113,15 +113,22 @@ public slots:
   void addToTotalNewMailCount( const QMap<QString, int> & newInFolder );
 
 public:
-  /** A message that arrived in the mail check running now (in its
-      folder, after the filters): @p serNum its serial number.  Ignored
-      without a check running. */
-  void addNewMessage( Q_UINT32 serNum );
+  /** A new message of a mail check: its serial number and the folder
+      (id) the check counts it in (checkedMail()'s newInFolder). */
+  struct NewMessage {
+    Q_UINT32 serNum;
+    QString folderId;
+  };
 
-  /** The serial numbers of the new messages of the mail check that
-      checkedMail() is emitted for (valid while it is emitted), in the
-      order of arrival; at most maxNewMessages, the first ones. */
-  const QValueList<Q_UINT32> & newMessages() const { return mTotalNewMessages; }
+  /** A message that arrived in the mail check of @p account running now:
+      @p serNum its serial number, @p folderId the folder the check
+      counts it in.  Ignored unless @p account is being checked. */
+  void addNewMessage( const KMAccount * account, Q_UINT32 serNum, const QString & folderId );
+
+  /** The new messages of the mail check that checkedMail() is emitted
+      for (valid while it is emitted), in the order of arrival, each
+      once (as first recorded); at most maxNewMessages, the first ones. */
+  const QValueList<NewMessage> & newMessages() const { return mTotalNewMessages; }
   enum { maxNewMessages = 1000 };
 
 private slots:
@@ -158,7 +165,7 @@ private:
   // for detailed (per folder) new mail notification
   QMap<QString, int> mTotalNewInFolder;
   // and the new messages themselves (newMessages()), each once
-  QValueList<Q_UINT32> mTotalNewMessages;
+  QValueList<NewMessage> mTotalNewMessages;
   QMap<Q_UINT32, bool> mTotalNewMessageSet;
   void clearTotalNew();
 

@@ -216,6 +216,7 @@ void KMAccount::sendReceipt(KMMessage* aMsg)
 bool KMAccount::processNewMsg(KMMessage* aMsg)
 {
   int rc, processResult;
+  Q_UINT32 serNum = 0;   // where it is now
 
   assert(aMsg != 0);
 
@@ -258,7 +259,7 @@ if( fileD0.open( IO_WriteOnly ) ) {
   else if (processResult == 1)
   {
     if( type() == "cachedimap" )
-      ; // already done by caller: parent->addMsgInternal( aMsg, false );
+      serNum = aMsg->getMsgSerNum(); // added by the caller: parent->addMsgInternal()
     else {
       // TODO: Perhaps it would be best, if this if was handled by a virtual
       // method, so the if( !dimap ) above could die?
@@ -279,7 +280,7 @@ if( fileD0.open( IO_WriteOnly ) ) {
         return false;
       }
       // (before it may be unloaded)
-      kmkernel->acctMgr()->addNewMessage( aMsg->getMsgSerNum() );
+      serNum = aMsg->getMsgSerNum();
       int count = mFolder->count();
       // If count == 1, the message is immediately displayed
       if (count != 1) mFolder->unGetMsg(count - 1);
@@ -287,7 +288,7 @@ if( fileD0.open( IO_WriteOnly ) ) {
   }
   else {
     // moved by a filter, where it is now
-    kmkernel->acctMgr()->addNewMessage( aMsg->getMsgSerNum() );
+    serNum = aMsg->getMsgSerNum();
   }
 
   // Count number of new messages for each folder
@@ -300,6 +301,7 @@ if( fileD0.open( IO_WriteOnly ) ) {
     folderId = aMsg->parent()->idString();
   }
   addToNewInFolder( folderId, 1 );
+  kmkernel->acctMgr()->addNewMessage( this, serNum, folderId );
 
   return true; //Everything's fine - message has been added by filter  }
 }

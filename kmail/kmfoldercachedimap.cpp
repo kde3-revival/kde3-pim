@@ -499,7 +499,7 @@ int KMFolderCachedImap::addMsgInternal( KMMessage* msg, bool newMail,
   // Add the message
   rc = KMFolderMaildir::addMsg(msg, index_return);
   if ( newMail && !rc )
-    kmkernel->acctMgr()->addNewMessage( msg->getMsgSerNum() );
+    kmkernel->acctMgr()->addNewMessage( account(), msg->getMsgSerNum(), folder()->idString() );
 
   if( newMail && ( imapPath() == "/INBOX/" || ( !GlobalSettings::self()->filterOnlyDIMAPInbox()
       && (userRights() <= 0 || userRights() & ACLJobs::Administer )
