@@ -45,7 +45,6 @@ using KMail::ImapAccountBase;
 #include "progressmanager.h"
 using KPIM::ProgressItem;
 using KPIM::ProgressManager;
-#include <mimelib/body.h>
 #include <mimelib/bodypart.h>
 
 #include <kio/scheduler.h>
@@ -634,16 +633,14 @@ QMap<QString, int> KMAcctImap::retrievingParts( const KMMessage * msg ) const
     bool section = !specifier.isEmpty();
     for ( uint i = 0; section && i < specifier.length(); ++i )
       section = specifier[i].isDigit() || specifier[i] == '.';
-    if ( !section || parts.contains( specifier ) )
+    // a finished job updates the part and notifies the message's observers
+    // (a reader reparsing at once, KHTML) before it leaves the list
+    if ( !section || it.current()->isFinished() || parts.contains( specifier ) )
       continue;
     KMMessage * jobMsg = it.current()->msgList().first();
     if ( !jobMsg || ( jobMsg != msg && ( !serNum || jobMsg->getMsgSerNum() != serNum ) ) )
       continue;
     const DwBodyPart * part = jobMsg->findDwBodyPart( jobMsg->getFirstDwBodyPart(), specifier );
-    // arrived: the job has updated the part and notified the message's
-    // observers (a reader reparsing at once, KHTML) before it leaves the list
-    if ( part && !part->Body().AsString().empty() )
-      continue;
     const int size = part ? part->BodySize() : 0;
     parts[specifier] = size > 0 ? size : 0;
   }

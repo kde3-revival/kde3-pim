@@ -56,7 +56,7 @@ namespace KMail {
 ImapJob::ImapJob( KMMessage *msg, JobType jt, KMFolderImap* folder,
     QString partSpecifier, const AttachmentStrategy *as )
   : FolderJob( msg, jt, folder? folder->folder() : 0, partSpecifier ),
-    mAttachmentStrategy( as ), mParentProgressItem(0)
+    mAttachmentStrategy( as ), mParentProgressItem(0), mFinished( false )
 {
 }
 
@@ -64,7 +64,7 @@ ImapJob::ImapJob( KMMessage *msg, JobType jt, KMFolderImap* folder,
 ImapJob::ImapJob( QPtrList<KMMessage>& msgList, QString sets, JobType jt,
                   KMFolderImap* folder )
   : FolderJob( msgList, sets, jt, folder? folder->folder() : 0 ),
-    mAttachmentStrategy ( 0 ), mParentProgressItem(0)
+    mAttachmentStrategy ( 0 ), mParentProgressItem(0), mFinished( false )
 {
 }
 
@@ -346,6 +346,9 @@ void ImapJob::slotGetNextMessage()
 //-----------------------------------------------------------------------------
 void ImapJob::slotGetMessageResult( KIO::Job * job )
 {
+  // done transferring, before anything is updated or notified
+  // (KMAcctImap::retrievingParts())
+  mFinished = true;
   KMMessage *msg = mMsgList.first();
   if (!msg || !msg->parent() || !job) {
     emit messageRetrieved( 0 );
