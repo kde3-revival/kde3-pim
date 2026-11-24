@@ -20,9 +20,11 @@
 
 #include "cidrewriter.h"
 
-#include <kcharsets.h>
+#include "htmlentities.h"
+
 #include <kurl.h>
 
+#include <qcstring.h>
 #include <qregexp.h>
 #include <qvaluelist.h>
 
@@ -54,48 +56,41 @@ namespace {
            || u == '-' || u == '_' || u >= 0x80 || u == '\\';
   }
 
-  // HTML 5 names of ASCII characters KCharsets does not know (ways to
-  // write "cid:" too)
-  struct AsciiName { const char * name; char c; };
-  const AsciiName asciiNames[] = {
-    { "DiacriticalGrave", '`' }, { "Hat", '^' }, { "NewLine", '\n' }, { "Tab", '\t' },
-    { "UnderBar", '_' }, { "VerticalLine", '|' }, { "ast", '*' }, { "bsol", '\\' },
-    { "colon", ':' }, { "comma", ',' }, { "commat", '@' }, { "dollar", '$' },
-    { "equals", '=' }, { "excl", '!' }, { "grave", '`' }, { "lbrace", '{' },
-    { "lbrack", '[' }, { "lcub", '{' }, { "lowbar", '_' }, { "lpar", '(' },
-    { "lsqb", '[' }, { "midast", '*' }, { "num", '#' }, { "period", '.' },
-    { "plus", '+' }, { "quest", '?' }, { "rbrace", '}' }, { "rbrack", ']' },
-    { "rcub", '}' }, { "rpar", ')' }, { "rsqb", ']' }, { "semi", ';' },
-    { "sol", '/' }, { "verbar", '|' }, { "vert", '|' }, { 0, 0 }
-  };
-
-  // A named character reference (without '&' and ';'): HTML 4's (from
-  // KCharsets), with HTML 5's values where they differ, and HTML 5's
-  // names above; QChar::null if none.
-  QChar namedReference( const QString & name ) {
-    for ( int k = 0; asciiNames[k].name; ++k )
-      if ( name == asciiNames[k].name )
-        return QChar( asciiNames[k].c );
-    if ( name == "COPY" ) return QChar( (ushort)0xa9 );
-    if ( name == "REG" ) return QChar( (ushort)0xae );
-    if ( name == "and" ) return QChar( (ushort)0x2227 );
-    if ( name == "or" ) return QChar( (ushort)0x2228 );
-    if ( name == "lang" ) return QChar( (ushort)0x27e8 );
-    if ( name == "rang" ) return QChar( (ushort)0x27e9 );
-    // names of KCharsets' table no browser knows
-    if ( name == "Eague" || name == "eague" || name == "supl" || name == "dol"
-         || name == "emdash" || name == "endash" )
-      return QChar::null;
-    return KCharsets::fromEntity( name );
+  // @p code (at most U+10FFFF) as UTF-16
+  void appendCodePoint( QString & out, uint code ) {
+    if ( code > 0xffff ) {
+      code -= 0x10000;
+      out += QChar( (ushort)( 0xd800 + ( code >> 10 ) ) );
+      out += QChar( (ushort)( 0xdc00 + ( code & 0x3ff ) ) );
+    } else
+      out += QChar( (ushort)code );
   }
 
-  // The references a browser decodes also without their semicolon (HTML 5's
-  // legacy ones): Latin-1's names (U+00A0 to U+00FF), amp lt gt quot and
-  // upper-case AMP LT GT QUOT COPY REG.
-  bool isLegacyReference( const QString & name, QChar c ) {
-    const ushort u = c.unicode();
-    return ( u >= 0xa0 && u <= 0xff ) || name == "amp" || name == "lt" || name == "gt" || name == "quot"
-           || name == "AMP" || name == "LT" || name == "GT" || name == "QUOT";
+  // A named character reference (the name, without '&' and ';'): its
+  // characters (one or two code points, as UTF-16) by HTML 5's table
+  // (htmlentities.h); QString::null if none.  @p legacy: whether a
+  // browser also takes it without the semicolon.
+  QString namedReference( const QString & name, bool & legacy ) {
+    const QCString key = name.latin1();   // (ASCII letters and digits)
+    unsigned int low = 0, high = htmlEntityCount;
+    while ( low < high ) {
+      const unsigned int mid = ( low + high ) / 2;
+      const HtmlEntity & e = htmlEntities[mid];
+      const int c = qstrcmp( key.data(), htmlEntityNames + e.name );
+      if ( c == 0 ) {
+        legacy = ( e.first & 0x80000000u ) != 0;
+        QString out;
+        appendCodePoint( out, e.first & 0x7fffffffu );
+        if ( e.second )
+          appendCodePoint( out, e.second );
+        return out;
+      }
+      if ( c < 0 )
+        high = mid;
+      else
+        low = mid + 1;
+    }
+    return QString::null;
   }
 
   inline bool isAsciiAlnum( QChar c ) {
@@ -112,7 +107,7 @@ namespace {
   // The character references of an attribute value, as HTML 5 decodes
   // them there: numeric ones (&#N, &#xN, with or without semicolon;
   // 0, surrogates and beyond U+10FFFF are U+FFFD, 128 to 159 windows-1252),
-  // named ones with their semicolon, the legacy ones also without it
+  // named ones (all of HTML 5's) with their semicolon, the legacy ones also without it
   // unless an alphanumeric character or '=' follows.  Others stay.
   QString decodeReferences( const QString & v ) {
     if ( v.find( '&' ) < 0 )
@@ -125,7 +120,7 @@ namespace {
       const int j = i + 1;
       int end = -1;   // after the reference
       uint code = 0;
-      QChar named;
+      QString named;
       if ( j < n && v[j] == '#' ) {
         int k = j + 1;
         const bool hex = k < n && ( v[k] == 'x' || v[k] == 'X' );
@@ -155,12 +150,12 @@ namespace {
         while ( k < n && k - j < 32 && isAsciiAlnum( v[k] ) )
           ++k;
         if ( k > j && ( k >= n || !isAsciiAlnum( v[k] ) ) ) {
-          const QString name = v.mid( j, k - j );
-          named = namedReference( name );
+          bool legacy = false;
+          named = namedReference( v.mid( j, k - j ), legacy );
           if ( !named.isNull() ) {
             if ( k < n && v[k] == ';' )
               end = k + 1;
-            else if ( isLegacyReference( name, named ) && ( k >= n || v[k] != '=' ) )
+            else if ( legacy && ( k >= n || v[k] != '=' ) )
               end = k;
           }
         }
@@ -170,14 +165,10 @@ namespace {
         continue;
       }
       out += v.mid( last, i - last );
-      if ( end >= 0 && !named.isNull() )
+      if ( !named.isNull() )
         out += named;
-      else if ( code > 0xffff ) {
-        code -= 0x10000;
-        out += QChar( (ushort)( 0xd800 + ( code >> 10 ) ) );
-        out += QChar( (ushort)( 0xdc00 + ( code & 0x3ff ) ) );
-      } else
-        out += QChar( (ushort)code );
+      else
+        appendCodePoint( out, code );
       last = end;
       i = v.find( '&', end );
     }
