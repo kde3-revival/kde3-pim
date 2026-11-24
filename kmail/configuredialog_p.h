@@ -561,6 +561,8 @@ private: // data
   QCheckBox    *mSystemTrayCheck;
   QCheckBox    *mRememberVirtualDesktopCheck;
   QButtonGroup *mSystemTrayGroup;
+  QCheckBox    *mNewMailBalloonCheck;
+  KIntSpinBox  *mNewMailBalloonTimeoutSpin;
 };
 
 class KDE_EXPORT AppearancePage : public ConfigModuleWithTabs {
