@@ -74,6 +74,7 @@ namespace KMail {
   class SearchWindow;
   class ImapAccountBase;
   class FavoriteFolderView;
+  class NewMailBalloon;
 }
 
 typedef QMap<int,KMFolder*> KMMenuToFolder;
@@ -109,6 +110,8 @@ public:
   /** Easy access to main components of the window. */
   KMReaderWin* messageView(void) const { return mMsgView; }
   KMFolderTree* folderTree(void) const  { return mFolderTree; }
+  /** The folder shown. */
+  KMFolder* folder() const { return mFolder; }
   KMail::FavoriteFolderView *favoriteFolderView() const { return mFavoriteFolderView; }
 
   static void cleanup();
@@ -551,6 +554,7 @@ private:
   QPtrList<KAction> mCustomTemplateActions;
 
   KMSystemTray  *mSystemTray;
+  KMail::NewMailBalloon *mNewMailBalloon;
   KConfig *mConfig;
   KXMLGUIClient *mGUIClient;
 

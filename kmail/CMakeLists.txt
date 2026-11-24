@@ -66,6 +66,7 @@ kde3_add_library(kmailprivate SHARED
     kmacctfolder.cpp
     kmdict.cpp
     kmsystemtray.cpp
+    newmailballoon.cpp
     kmacctlocal.cpp
     kmfolderdir.cpp
     kmfoldermgr.cpp
@@ -324,6 +325,7 @@ kde3_add_library(kmailprivate SHARED
     kmsender_p.h
     kmservertest.h
     kmsystemtray.h
+    newmailballoon.h
     kmtransport.h
     kwindowpositioner.h
     listjob.h

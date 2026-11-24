@@ -74,6 +74,7 @@ using KMail::SearchWindow;
 #include "kmcommands.h"
 #include "kmmainwin.h"
 #include "kmsystemtray.h"
+#include "newmailballoon.h"
 #include "imapaccountbase.h"
 #include "transportmanager.h"
 using KMail::ImapAccountBase;
@@ -171,6 +172,7 @@ KMMainWidget::KMMainWidget(QWidget *parent, const char *name,
   mFolderHtmlPref = false;
   mFolderHtmlLoadExtPref = false;
   mSystemTray = 0;
+  mNewMailBalloon = 0;
   mDestructed = false;
   mActionCollection = actionCollection;
   mTopLayout = new QVBoxLayout(this);
@@ -215,6 +217,7 @@ KMMainWidget::KMMainWidget(QWidget *parent, const char *name,
 
   connect( kmkernel->acctMgr(), SIGNAL( checkedMail( bool, bool, const QMap<QString, int> & ) ),
            this, SLOT( slotMailChecked( bool, bool, const QMap<QString, int> & ) ) );
+  mNewMailBalloon = new KMail::NewMailBalloon( this, "newMailBalloon" );
 
   connect( kmkernel->acctMgr(), SIGNAL( accountAdded( KMAccount* ) ),
            this, SLOT( initializeIMAPActions() ) );
@@ -285,6 +288,8 @@ void KMMainWidget::destruct()
     mSearchWin->close();
   writeConfig();
   writeFolderConfig();
+  delete mNewMailBalloon;
+  mNewMailBalloon = 0;
   delete mHeaders;
   delete mFolderTree;
   delete mSystemTray;
@@ -496,6 +501,8 @@ void KMMainWidget::readConfig(void)
   {
     // Update systray
     toggleSystemTray();
+    if ( mNewMailBalloon )
+      mNewMailBalloon->readConfig();
 
     bool layoutChanged = ( oldLongFolderList != mLongFolderList )
                     || ( oldReaderWindowActive != mReaderWindowActive )
@@ -1004,14 +1011,9 @@ void KMMainWidget::slotMailChecked( bool newMail, bool sendOnCheck,
     summary = i18n( "New mail arrived" );
   }
 
-  if(kmkernel->xmlGuiInstance()) {
-    KNotifyClient::Instance instance(kmkernel->xmlGuiInstance());
-    KNotifyClient::event( topLevelWidget()->winId(), "new-mail-arrived",
-                          summary );
-  }
-  else
-    KNotifyClient::event( topLevelWidget()->winId(), "new-mail-arrived",
-                          summary );
+  // KNotify's event, its passive popup a balloon at the tray icon
+  if ( mNewMailBalloon )
+    mNewMailBalloon->newMail( newInFolder, summary );
 
   if (mBeepOnNew) {
     KNotifyClient::beep();
