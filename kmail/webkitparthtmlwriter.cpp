@@ -443,9 +443,9 @@ namespace KMail {
     // text in the background colour makes it so (an empty page left the
     // previous message on screen).
     if ( dir.isEmpty() || !writeFile( dir + "/index.html", QString::fromLatin1(
-           "<html><head><style>html, body { background: %1; color: %1; margin: 0; overflow: hidden; }"
-           "p { margin: 0; -webkit-user-select: none; }</style></head><body><p>%2</p></body></html>" )
-           .arg( background.name() ).arg( QString().fill( 'x', 400 ) ) ) ) {
+           "<html><head><style>html, body { background: %1; color: %2; margin: 0; overflow: hidden; }"
+           "p { margin: 0; -webkit-user-select: none; }</style></head><body><p>%3</p></body></html>" )
+           .arg( background.name() ).arg( background.name() ).arg( QString().fill( 'x', 400 ) ) ) ) {
       mBlankLoading = false;
       mUncoverAfterLoad = true;   // see slotCompleted()
       return;
