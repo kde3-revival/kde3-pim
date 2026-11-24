@@ -179,25 +179,58 @@ QString isolated( const QString & text )
 // Larger text/plain parts are not decoded for the start of their text.
 const uint maxPreviewSource = 256 * 1024;
 
+// Whether @p headers say "Content-Disposition: attachment".
+bool isAttachment( DwHeaders & headers )
+{
+  return headers.HasContentDisposition() &&
+         headers.ContentDisposition().DispositionType() == DwMime::kDispTypeAttachment;
+}
+
+// The first text/plain part among @p part and the parts after it,
+// looking into multiparts (@p depth levels at most), never into an
+// attachment (a multipart one neither) or an attached message.
+DwBodyPart * plainPart( DwBodyPart * part, int depth )
+{
+  for ( ; part; part = part->Next() ) {
+    if ( !part->hasHeaders() || !part->Headers().HasContentType() )
+      continue;   // (text/plain by default, but in a digest: no guess)
+    DwHeaders & headers = part->Headers();
+    if ( isAttachment( headers ) )
+      continue;
+    const int type = headers.ContentType().Type();
+    if ( type == DwMime::kTypeMultipart ) {
+      if ( depth > 0 ) {
+        if ( DwBodyPart * found = plainPart( part->Body().FirstBodyPart(), depth - 1 ) )
+          return found;
+      }
+      continue;
+    }
+    if ( type == DwMime::kTypeText && headers.ContentType().Subtype() == DwMime::kSubtypePlain )
+      return part;
+  }
+  return 0;
+}
+
 // The start of the text of @p msg: from its text/plain part (the body of
-// a message that is text/plain, or the first text/plain part that is no
-// attachment), without quoted lines and signature; never HTML, never an
-// encrypted text.  Empty when there is none.
+// a message that is text/plain, or the first text/plain part of its
+// multiparts that is no attachment and in none), without quoted lines
+// and signature; never HTML, never an encrypted text.  Empty when there
+// is none.
 QString previewOf( const KMMessage * msg )
 {
   QString text;
-  DwBodyPart * part = msg->findDwBodyPart( DwMime::kTypeText, DwMime::kSubtypePlain );
-  if ( part ) {
-    if ( part->Body().AsString().length() > maxPreviewSource )
+  DwHeaders & headers = msg->getTopLevelPart()->Headers();
+  if ( isAttachment( headers ) )
+    return QString::null;
+  if ( msg->type() == DwMime::kTypeMultipart ) {
+    DwBodyPart * part = plainPart( msg->getFirstDwBodyPart(), 8 );
+    if ( !part || part->Body().AsString().length() > maxPreviewSource )
       return QString::null;
     KMMessagePart msgPart;
     KMMessage::bodyPart( part, &msgPart );
-    if ( msgPart.contentDisposition().lower().find( "attachment" ) >= 0 )
-      return QString::null;
     text = msgPart.bodyToUnicode();
-  } else if ( msg->numBodyParts() == 0 &&
-              ( ( msg->type() == DwMime::kTypeText && msg->subtype() == DwMime::kSubtypePlain ) ||
-                msg->type() == DwMime::kTypeNull ) ) {
+  } else if ( ( msg->type() == DwMime::kTypeText && msg->subtype() == DwMime::kSubtypePlain ) ||
+              msg->type() == DwMime::kTypeNull ) {
     if ( msg->getTopLevelPart()->Body().AsString().length() > maxPreviewSource )
       return QString::null;
     text = msg->bodyToUnicode();
