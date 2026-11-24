@@ -843,6 +843,7 @@ void NewMailBalloon::selectMessage()
   KMMsgDict::instance()->getLocation( mPendingSerNum, &folder, &idx );
   if ( folder != mPendingFolder || idx < 0 )
     return;
+  headers->clearSelection();   // (only this message selected)
   headers->setCurrentItemBySerialNum( mPendingSerNum );
   if ( headers->currentItemIndex() == idx ) {
     mPendingSerNum = 0;
