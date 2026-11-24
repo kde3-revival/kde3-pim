@@ -1974,26 +1974,45 @@ void KMReaderWin::fetchRequestedParts( KMMessage * msg )
   KMFolder * folder = msg ? msg->parent() : 0;
   if ( parts.isEmpty() || !folder || folder->folderType() != KMFolderTypeImap )
     return;
-  // The parts a job is fetching already (an earlier visit to this message,
-  // whose jobs went on, or an attachment loaded): not again, but counted
-  // first, the bounds are the message's, not the visit's.
-  QValueList<RequestedPart> toFetch;
-  for ( QValueList<RequestedPart>::ConstIterator it = parts.begin(); it != parts.end(); ++it )
-    if ( folder->isRetrievingPart( msg, (*it).specifier ) ) {
-      ++mRequestedCount;
-      mRequestedBytes += (*it).size;
-    } else
-      toFetch.append( *it );
-  // each part arriving updates the message, which notifies the reader
-  // (update()): the message is shown again with the image
-  for ( QValueList<RequestedPart>::ConstIterator it = toFetch.begin(); it != toFetch.end(); ++it ) {
-    if ( mRequestedCount >= requestedPartsLimit || mRequestedBytes + (*it).size > embeddedBytesLimit )
-      continue;   // stays an attachment (a click loads it)
+  // The parts of the message jobs are fetching (whoever started them: this
+  // reader on an earlier visit, an attachment loaded, the strategy) count
+  // first, every one of them, whether its image would still be embedded
+  // or not: the bounds are those of the transfers of the message.  One of
+  // unknown size counts as the whole bound.  They are not fetched again.
+  const QMap<QString, int> inFlight = folder->retrievingParts( msg );
+  Q_UINT64 inFlightBytes = 0;
+  for ( QMap<QString, int>::ConstIterator it = inFlight.begin(); it != inFlight.end(); ++it )
+    inFlightBytes += it.data() > 0 ? (unsigned int)it.data() : embeddedBytesLimit;
+  unsigned int inFlightCount = inFlight.count();
+  // New ones within what is left, and within the bounds of the parts this
+  // visit fetched; each part arriving updates the message, which notifies
+  // the reader (update()): the message is shown again with the image
+  for ( QValueList<RequestedPart>::ConstIterator it = parts.begin(); it != parts.end(); ++it ) {
+    if ( inFlight.contains( (*it).specifier ) )
+      continue;
+    if ( inFlightCount >= requestedPartsLimit || inFlightBytes + (*it).size > embeddedBytesLimit
+         || mRequestedCount >= requestedPartsLimit || mRequestedBytes + (*it).size > embeddedBytesLimit ) {
+      // stays an attachment (a click loads it); asked again by a later
+      // parse (a part arriving), when transfers have ended
+      mRequestedParts.remove( (*it).specifier );
+      continue;
+    }
+    ++inFlightCount;
+    inFlightBytes += (*it).size;
     ++mRequestedCount;
     mRequestedBytes += (*it).size;
     FolderJob * job = folder->createJob( msg, FolderJob::tGetMessage, 0, (*it).specifier );
     job->setCancellable( false );
     job->start();
+  }
+  if ( getenv( "KMAIL_LOD_STATS" ) ) {
+    // (tests) what is in transfer for the message now, by the account's jobs
+    const QMap<QString, int> now = folder->retrievingParts( msg );
+    Q_UINT64 bytes = 0;
+    for ( QMap<QString, int>::ConstIterator it = now.begin(); it != now.end(); ++it )
+      bytes += it.data();
+    fprintf( stderr, "kmail-lod-stats serial %lu in transfer %u parts %llu bytes\n",
+             msg->getMsgSerNum(), (unsigned int)now.count(), (unsigned long long)bytes );
   }
 }
 

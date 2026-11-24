@@ -1519,10 +1519,10 @@ KMFolderImap::ignoreJobsForMessage( KMMessage* msg )
 }
 
 //-------------------------------------------------------------
-bool KMFolderImap::isRetrievingPart( const KMMessage * msg, const QString & specifier ) const
+QMap<QString, int> KMFolderImap::retrievingParts( const KMMessage * msg ) const
 {
   KMAcctImap * acct = account();
-  return acct && acct->isRetrievingPart( msg, specifier );
+  return acct ? acct->retrievingParts( msg ) : QMap<QString, int>();
 }
 
 //-----------------------------------------------------------------------------

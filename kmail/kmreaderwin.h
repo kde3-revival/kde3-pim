@@ -114,10 +114,11 @@ public:
   /** IMAP load on demand: @p node, an image the HTML shown embeds, is not
       loaded yet.  It is fetched after the parse (once per message shown,
       within the bounds of embedded bytes, number and size of the parts
-      fetched for it); the message is shown again when it arrives.  A part
-      a job of the account is fetching already (an earlier visit to the
-      message, an attachment loaded) is not fetched again, it is counted.
-      A part of unknown size is not fetched. */
+      fetched for it); the message is shown again when it arrives.  Every
+      part of the message a job of the account is fetching (an earlier
+      visit to the message, an attachment loaded) counts against the bounds
+      of number and size first, and is not fetched again.  A part of
+      unknown size is not fetched. */
   void requestEmbeddedPart( partNode * node );
 
   KMReaderWin( QWidget *parent,
@@ -543,9 +544,9 @@ private:
   void forgetEmbeddedResources();
   // images to fetch (IMAP load on demand), by part specifier: requested for
   // the message shown (or still to request after the parse), the ones to
-  // request with their sizes, and the number and size of the requested
-  // ones (also those of an earlier visit to the message still on their
-  // way: requestEmbeddedPart())
+  // request with their sizes, and the number and size of the ones this
+  // visit fetched (the transfers of the message are bounded too:
+  // fetchRequestedParts())
   struct RequestedPart { QString specifier; unsigned int size; };
   QMap<QString, bool> mRequestedParts;
   QValueList<RequestedPart> mPendingParts;
