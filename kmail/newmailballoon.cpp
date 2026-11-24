@@ -17,7 +17,6 @@
 
 #include "accountmanager.h"
 #include "globalsettings.h"
-#include "kmcommands.h"
 #include "kmfolder.h"
 #include "kmfoldermgr.h"
 #include "kmfoldertree.h"
@@ -649,8 +648,20 @@ void NewMailBalloon::slotAction( int action )
   if ( action == ReadAction ) {
     showMessage( entry );
   } else if ( action == MarkAsReadAction ) {
-    if ( !entry.serNums.isEmpty() )
-      ( new KMSetStatusCommand( KMMsgStatusRead, entry.serNums ) )->start();
+    // (each folder open meanwhile: KMSetStatusCommand would not open
+    // those that are closed, a folder the filters moved mail into)
+    QMap<KMFolder*, QValueList<int> > ids;
+    for ( QValueList<Q_UINT32>::ConstIterator it = entry.serNums.begin(); it != entry.serNums.end(); ++it ) {
+      KMFolder * folder = 0;
+      int idx = -1;
+      KMMsgDict::instance()->getLocation( *it, &folder, &idx );
+      if ( folder && idx >= 0 )
+        ids[ folder ].append( idx );
+    }
+    for ( QMap<KMFolder*, QValueList<int> >::Iterator it = ids.begin(); it != ids.end(); ++it ) {
+      KMFolderOpener opener( it.key(), "newmailballoon" );
+      it.key()->setStatus( it.data(), KMMsgStatusRead );
+    }
   }
 }
 
