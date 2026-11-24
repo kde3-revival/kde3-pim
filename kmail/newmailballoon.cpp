@@ -359,6 +359,7 @@ NewMailBalloon::NewMailBalloon( KMMainWidget * mainWidget, const char * name )
   : QObject( mainWidget, name ),
     mMainWidget( mainWidget ),
     mShown( 0 ),
+    mWaits( 0 ),
     mPendingSerNum( 0 )
 {
 }
@@ -553,10 +554,26 @@ bool NewMailBalloon::newMail( const QMap<QString, int> & newInFolder, const QStr
 
 // Whether @p entry is still worth a balloon: one of its messages is
 // still there and unread, or one of the folders of its messages only
-// counted is still there.  The messages and folders that are gone
-// leave it (and its count).
-bool NewMailBalloon::stillNew( Entry & entry ) const
+// counted is still there.  The messages that are gone, or that the
+// filters moved into a folder that does not count (online IMAP filters
+// after the check), or that became spam or ignored, leave it (and its
+// count), as do the folders that are gone.  @p waiting: one of its
+// messages is being fetched (for the filters): ask again later.
+bool NewMailBalloon::stillNew( Entry & entry, bool * waiting ) const
 {
+  FolderSet folders;
+  *waiting = false;
+  for ( QValueList<Q_UINT32>::ConstIterator it = entry.serNums.begin(); it != entry.serNums.end(); ++it ) {
+    KMFolder * folder = 0;
+    int idx = -1;
+    const KMMsgBase * msgBase = folders.locate( *it, &folder, &idx );
+    if ( msgBase && msgBase->isMessage() &&
+         static_cast<const KMMessage*>( msgBase )->transferInProgress() ) {
+      *waiting = true;
+      return true;
+    }
+  }
+
   for ( QMap<QString, int>::Iterator it = entry.unknown.begin(); it != entry.unknown.end(); ) {
     QMap<QString, int>::Iterator unknown = it++;
     if ( !kmkernel->findFolderById( unknown.key() ) ) {
@@ -564,7 +581,7 @@ bool NewMailBalloon::stillNew( Entry & entry ) const
       entry.unknown.remove( unknown );
     }
   }
-  FolderSet folders;
+  QMap<QString, bool> countsCache;
   bool unread = false;
   QValueList<Q_UINT32> serNums;
   QStringList folderIds;
@@ -573,7 +590,8 @@ bool NewMailBalloon::stillNew( Entry & entry ) const
     KMFolder * folder = 0;
     int idx = -1;
     const KMMsgBase * msgBase = folders.locate( *it, &folder, &idx );
-    if ( !msgBase ) {
+    if ( !msgBase || !countsNow( folder->idString(), countsCache ) || msgBase->isSpam() ||
+         msgBase->isIgnored() ) {
       --entry.count;
       continue;
     }
@@ -611,8 +629,17 @@ void NewMailBalloon::showBalloon()
 {
   if ( mBalloon )
     return;
-  while ( !mEntries.isEmpty() && !stillNew( mEntries.first() ) )
+  bool waiting = false;
+  while ( !mEntries.isEmpty() && !stillNew( mEntries.first(), &waiting ) )
     mEntries.remove( mEntries.begin() );
+  // (at most maxWaits times: a fetch that does not end does not hold
+  // the balloon back)
+  if ( waiting && mWaits < maxWaits ) {
+    ++mWaits;
+    QTimer::singleShot( 500, this, SLOT( showBalloon() ) );
+    return;
+  }
+  mWaits = 0;
   if ( mEntries.isEmpty() || !GlobalSettings::self()->showNewMailBalloon() )
     return;
   const Entry & entry = mEntries.first();

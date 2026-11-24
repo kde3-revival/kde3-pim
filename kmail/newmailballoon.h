@@ -90,7 +90,7 @@ private:
   bool isShownInFront( KMFolder * folder ) const;
   bool countsNow( const QString & folderId, QMap<QString, bool> & cache ) const;
   void collect( const QMap<QString, int> & newInFolder, Entry & entry );
-  bool stillNew( Entry & entry ) const;
+  bool stillNew( Entry & entry, bool * waiting ) const;
   void closeBalloon( bool byItself = false );
   void next();
   void showMessage( const Entry & entry );
@@ -103,6 +103,9 @@ private:
   // one that goes otherwise (a right or middle click hides it, without
   // a signal) was dismissed.
   const KBalloon * mShown;
+  // How often the first entry waited for its messages being fetched.
+  int mWaits;
+  enum { maxWaits = 40 };
   Q_UINT32 mPendingSerNum;          // to select once the headers are there
   QGuardedPtr<KMFolder> mPendingFolder;
 };
