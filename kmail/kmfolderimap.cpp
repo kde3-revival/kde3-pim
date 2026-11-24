@@ -1145,6 +1145,17 @@ void KMFolderImap::slotCheckValidityResult(KIO::Job * job)
     if ( a >= 0 && (b - a - 18) >= 0 )
       mPermanentFlags = cstr.mid( a + 18, b - a - 18 ).toInt(&ok);
     if ( !ok ) mPermanentFlags = 0;
+    // the UID the next message will get, 0 if unknown: only that of a
+    // SELECT of this check (X-Selected), which also gave the count.  The
+    // UIDNEXT of an earlier SELECT may be stale: a NOOP since then can
+    // report new and expunged messages without repeating it.
+    ulong uidNext = 0;
+    a = cstr.find( "X-UidNext: " );
+    b = cstr.find( "\r\n", a );
+    if ( a >= 0 && (b - a - 11) >= 0 && cstr.find( "\r\nX-Selected: now\r\n" ) >= 0 ) {
+      uidNext = cstr.mid( a + 11, b - a - 11 ).toULong( &ok );
+      if ( !ok ) uidNext = 0;
+    }
     QString startUid;
     if (uidValidity() != uidv)
     {
@@ -1176,6 +1187,17 @@ void KMFolderImap::slotCheckValidityResult(KIO::Job * job)
         mMailCheckProgressItem->setTotalItems( remain );
       }
       mMailCheckProgressItem->setCompletedItems( 0 );
+    }
+    // Nothing new: the server has as many messages as the folder, and none
+    // got a UID after the last one known.  The envelopes of "UID last+1:*"
+    // would only be the last message's, which is known: don't ask for them.
+    // (With fewer messages on the server, the fetch notices it and reloads.)
+    if ( !startUid.isEmpty() && uidNext > 0 && exists >= 0 && exists == count()
+         && uidNext <= startUid.toULong() ) {
+      quiet( true ); // as reallyGetFolder(), for finishMailCheck()
+      mContentState = imapDownloadInProgress;
+      finishMailCheck( "getMessage", imapFinished );
+      return;
     }
     reallyGetFolder(startUid);
   }

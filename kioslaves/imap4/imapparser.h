@@ -26,6 +26,7 @@
 
 #include <qstringlist.h>
 #include <qvaluelist.h>
+#include <qmap.h>
 #include <qptrlist.h>
 #include <qasciidict.h>
 
@@ -272,6 +273,9 @@ public:
   void parseList (parseString & result);
   /** @brief parse a LSUB line */
   void parseLsub (parseString & result);
+  /** @brief after a LIST with the parameters @p parameter succeeded:
+      forget the listed boxes its pattern covers that it did not return */
+  void forgetUnlisted (const QString & parameter);
   /** @brief parse a LISTRIGHTS line */
   void parseListRights (parseString & result);
   /** @brief parse a MYRIGHTS line */
@@ -457,6 +461,10 @@ protected:
 
   /** @brief the results from list/lsub/listrights commands */
   QValueList < imapList > listResponses;
+
+  /** @brief the boxes a LIST of the box itself returned on this connection,
+      by name; forgotten when a box is created, deleted or renamed */
+  QMap < QString, imapList > listedBoxes;
 
   /** @brief queues handling the running commands */
   QPtrList < imapCommand > sentQueue;  // no autodelete

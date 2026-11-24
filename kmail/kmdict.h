@@ -58,8 +58,16 @@ private:
   /** Initializes the hash table to @p size colums. */
   void init(int size);
 
+  /** Spreads the items over more columns once there are too many: the size
+   *  given to the constructor is only a hint, and every lookup walks a
+   *  column. */
+  void grow();
+
   /** The size of the hash. */
   int mSize;
+
+  /** The number of items. */
+  int mCount;
   
   /** The buckets. */
   KMDictItem **mVecs;

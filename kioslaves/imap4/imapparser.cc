@@ -51,6 +51,7 @@ extern "C" {
 #include <qbuffer.h>
 #include <qstring.h>
 #include <qstringlist.h>
+#include <qmemarray.h>
 
 #include <kdebug.h>
 #include <kmdcodec.h>
@@ -117,7 +118,7 @@ imapParser::sendCommand (imapCommand * aCmd)
     currentBox = parseOneWordC(p);
     kdDebug(7116) << "imapParser::sendCommand - setting current box to " << currentBox << endl;
   }
-  else if (command == "CLOSE")
+  else if (command == "CLOSE" || command == "UNSELECT")
   {
      // we no longer have a box open
     currentBox = QString::null;
@@ -140,6 +141,12 @@ imapParser::sendCommand (imapCommand * aCmd)
            || command == "LSUB")
   {
     listResponses.clear ();
+  }
+  else if (command == "CREATE"
+           || command == "DELETE"
+           || command == "RENAME")
+  {
+    listedBoxes.clear ();
   }
   parseWriteLine (aCmd->getStr ());
   return aCmd;
@@ -638,6 +645,10 @@ imapParser::parseResult (QByteArray & result, parseString & rest,
     break;
 
   case 'E':
+    // a SELECT or EXAMINE that failed with NO left no box selected; after
+    // BAD that is not certain, but taking it as no box keeps whatever
+    // depends on the selected box (an expunge) from being sent.  Leaving
+    // a box on purpose looks at the result itself (deselectBox()).
     if (command == "EXAMINE")
     {
       if (qstrncmp(result, "OK", result.size()) == 0)
@@ -702,6 +713,94 @@ void imapParser::parseList (parseString & result)
   this_one.setName (rfcDecoder::fromIMAP(parseLiteralC(result)));  // decode modified UTF7
 
   listResponses.append (this_one);
+  // any LIST of a known box tells what it is now
+  if (listedBoxes.contains (this_one.name ()))
+    listedBoxes.replace (this_one.name (), this_one);
+}
+
+// Whether a LIST mailbox pattern covers a name (RFC 3501 6.3.8): '*'
+// matches any characters, '%' any but the hierarchy delimiter (a NIL
+// delimiter: any).  Dynamic programming over the pattern from its end, one
+// row of the name at a time: time pattern x name, no backtracking (a
+// recursive match takes exponential time on patterns like "*a*a*a...b").
+// covers[n]: the rest of the pattern from the current position matches
+// name[n..]; a '%' at n consumes name[n] only if no delimiter starts there.
+static bool listPatternCovers (const QString & pattern, const QString & name,
+                               const QString & delimiter)
+{
+  const uint len = name.length ();
+  QMemArray < bool > atDelimiter (len);
+  for (uint n = 0; n < len; ++n)
+    atDelimiter[n] = !delimiter.isEmpty ()
+      && name.mid (n, delimiter.length ()) == delimiter;
+
+  QMemArray < bool > covers (len + 1);
+  covers.fill (false);
+  covers[len] = true;   // the empty pattern covers the empty rest
+  for (uint p = pattern.length (); p-- > 0; )
+  {
+    const QChar c = pattern[p];
+    if (c == '*' || c == '%')
+    {
+      // covers[n] = rest[n] || (consumable name[n] && covers[n + 1])
+      for (uint n = len; n-- > 0; )
+        covers[n] = covers[n]
+          || ((c == '*' || !atDelimiter[n]) && covers[n + 1]);
+    }
+    else
+    {
+      for (uint n = 0; n < len; ++n)
+        covers[n] = name[n] == c && covers[n + 1];
+      covers[len] = false;
+    }
+  }
+  return covers[0];
+}
+
+// INBOX is the same name in any case (RFC 3501 5.1); LIST matches it as
+// "INBOX"
+static QString listName (const QString & name)
+{
+  return name.upper () == "INBOX" ? QString ("INBOX") : name;
+}
+
+// A LIST that succeeded returned every box its pattern covers: a listed box
+// it covers but did not return is gone (or not to be seen any more), and is
+// listed again when it is used.  Only for the plain form the slave sends,
+// an empty reference and one quoted pattern: a reference, a pattern list or
+// LIST-EXTENDED options would need their own rules to say what is covered.
+void imapParser::forgetUnlisted (const QString & parameter)
+{
+  if (listedBoxes.isEmpty () || !parameter.startsWith ("\"\" \""))
+    return;
+  parseString p;
+  p.fromString (parameter);
+  const QString reference = rfcDecoder::fromIMAP (parseOneWordC (p));
+  if (!reference.isEmpty () || p.isEmpty () || p[0] != '"')
+    return;
+  const QString pattern = listName (rfcDecoder::fromIMAP (parseOneWordC (p)));
+  if (!p.isEmpty ())
+    return;
+
+  QStringList gone;
+  for (QMap < QString, imapList >::ConstIterator it = listedBoxes.begin ();
+       it != listedBoxes.end (); ++it)
+  {
+    const QString name = listName (it.key ());
+    if (!listPatternCovers (pattern, name, (*it).hierarchyDelimiter ()))
+      continue;
+    bool returned = false;
+    for (QValueListConstIterator < imapList > r = listResponses.begin ();
+         r != listResponses.end () && !returned; ++r)
+      returned = listName ((*r).name ()) == name;
+    if (!returned)
+      gone.append (it.key ());
+  }
+  for (QStringList::ConstIterator it = gone.begin (); it != gone.end (); ++it)
+  {
+    kdDebug(7116) << "imapParser::forgetUnlisted - " << *it << endl;
+    listedBoxes.remove (*it);
+  }
 }
 
 void imapParser::parseLsub (parseString & result)
@@ -892,6 +991,10 @@ void imapParser::parseExpunge (ulong value, parseString & result)
 {
   Q_UNUSED(value);
   Q_UNUSED(result);
+  // a message of the selected box is gone: the next EXISTS, if the server
+  // sends one, need not come before the count is used (RFC 3501 7.4.1)
+  if (selectInfo.countAvailable () && selectInfo.count () > 0)
+    selectInfo.setCount (selectInfo.count () - 1);
 }
 
 void imapParser::parseAddressList (parseString & inWords, QPtrList<mailAddress>& list)
@@ -1786,6 +1889,8 @@ int imapParser::parseLoop ()
 
           sentQueue.removeRef (current);
           completeQueue.append (current);
+          if (current->command() == "LIST" && current->result() == "OK")
+            forgetUnlisted (current->parameter());
           if (result.length())
             parseResult (resultCode, result, current->command());
         }
