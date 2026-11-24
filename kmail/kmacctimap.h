@@ -97,7 +97,7 @@ public:
 
   /** The parts of @p msg (the message or another copy of it with its
       serial number) jobs of this account retrieve or will: sections
-      (not headers) and their sizes (0 if not known). */
+      (not headers) not arrived yet and their sizes (0 if not known). */
   QMap<QString, int> retrievingParts( const KMMessage * msg ) const;
     
 public slots:
