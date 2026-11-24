@@ -45,6 +45,8 @@ using KMail::ImapAccountBase;
 #include "progressmanager.h"
 using KPIM::ProgressItem;
 using KPIM::ProgressManager;
+#include <mimelib/bodypart.h>
+
 #include <kio/scheduler.h>
 #include <kio/slave.h>
 #include <kmessagebox.h>
@@ -617,6 +619,32 @@ int KMAcctImap::slotFilterMsg( KMMessage *msg )
   }
 
   return filterResult;
+}
+
+//-----------------------------------------------------------------------------
+QMap<QString, int> KMAcctImap::retrievingParts( const KMMessage * msg ) const
+{
+  QMap<QString, int> parts;
+  const unsigned long serNum = msg->getMsgSerNum();
+  for ( QPtrListIterator<KMail::ImapJob> it( mJobList ); it.current(); ++it ) {
+    // a section: digits and dots ("2.1"), not "2.1.MIME", HEADER, STRUCTURE
+    // or the whole message
+    const QString specifier = it.current()->partSpecifier();
+    bool section = !specifier.isEmpty();
+    for ( uint i = 0; section && i < specifier.length(); ++i )
+      section = specifier[i].isDigit() || specifier[i] == '.';
+    // a finished job updates the part and notifies the message's observers
+    // (a reader reparsing at once, KHTML) before it leaves the list
+    if ( !section || it.current()->isFinished() || parts.contains( specifier ) )
+      continue;
+    KMMessage * jobMsg = it.current()->msgList().first();
+    if ( !jobMsg || ( jobMsg != msg && ( !serNum || jobMsg->getMsgSerNum() != serNum ) ) )
+      continue;
+    const DwBodyPart * part = jobMsg->findDwBodyPart( jobMsg->getFirstDwBodyPart(), specifier );
+    const int size = part ? part->BodySize() : 0;
+    parts[specifier] = size > 0 ? size : 0;
+  }
+  return parts;
 }
 
 #include "kmacctimap.moc"

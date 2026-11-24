@@ -66,6 +66,10 @@ public:
   void setParentFolder( const KMFolderImap* parent );
   KPIM::ProgressItem* parentProgressItem() const { return mParentProgressItem; }
   void setParentProgressItem( KPIM::ProgressItem *p ) { mParentProgressItem = p; }
+  /** The result of the retrieval has come (data or not, or an error): the
+      job is done transferring, set before the message is updated and its
+      observers notified (it leaves the account's job list after that). */
+  bool isFinished() const { return mFinished; }
 
 private slots:
   void slotGetMessageResult( KIO::Job * job );
@@ -89,6 +93,7 @@ private:
   const AttachmentStrategy *mAttachmentStrategy;
   KMFolderImap *mParentFolder;
   KPIM::ProgressItem *mParentProgressItem;
+  bool mFinished;
 };
 
 }

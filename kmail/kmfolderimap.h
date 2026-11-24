@@ -265,6 +265,10 @@ public:
 
   virtual void ignoreJobsForMessage( KMMessage* );
 
+  /** The parts of @p msg jobs of the account retrieve or will:
+      KMAcctImap::retrievingParts(). */
+  virtual QMap<QString, int> retrievingParts( const KMMessage * msg ) const;
+
   /**
    * If this folder should be included in new-mail-check
    */

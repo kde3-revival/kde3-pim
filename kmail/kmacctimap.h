@@ -24,6 +24,7 @@
 
 #include "imapaccountbase.h"
 #include <qdict.h>
+#include <qmap.h>
 
 class KMFolderImap;
 class KMFolderTreeItem;
@@ -93,6 +94,11 @@ public:
    * Queues a message for automatic filtering
    */
   void execFilters(Q_UINT32 serNum);
+
+  /** The parts of @p msg (the message or another copy of it with its
+      serial number) jobs of this account retrieve or will: sections
+      (not headers) of jobs not finished and their sizes (0 if not known). */
+  QMap<QString, int> retrievingParts( const KMMessage * msg ) const;
     
 public slots:
   /**

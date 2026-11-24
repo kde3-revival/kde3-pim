@@ -219,6 +219,14 @@ public:
 
     bool hasContentDispositionInline() const;
 
+    /** The Content-ID without its angle brackets (QString::null if none). */
+    QString contentIdNoBrackets() const;
+
+    /** For a multipart/related node (RFC 2387): its root part, the part
+        the "start" parameter names, else the first part.  0 for any other
+        node. */
+    partNode * relatedRoot() const;
+
     QString contentTypeParameter( const char * name ) const;
 
     const QString& trueFromAddress() const;

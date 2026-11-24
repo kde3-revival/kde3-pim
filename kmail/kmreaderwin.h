@@ -6,6 +6,7 @@
 #define KMREADERWIN_H
 
 #include <qwidget.h>
+#include <qmap.h>
 #include <qtimer.h>
 #include <qstringlist.h>
 #include <kurl.h>
@@ -84,6 +85,42 @@ class KMReaderWin: public QWidget, public KMail::Interface::Observer {
   friend class KMail::KHtmlPartHtmlWriter;
 
 public:
+  /** Writes @p msgPart to a temporary file (removed with the message
+      shown); its name, or QString::null. */
+  QString writeMessagePartToTempFile( KMMessagePart* msgPart, int partNumber );
+
+  /** The images ObjectTreeParser embedded into the HTML shown (by
+      Content-ID): the URL each is shown with; QString::null if none. */
+  QString embeddedResourceURL( partNode * node ) const;
+  void addEmbeddedResource( partNode * node, const QString & url );
+  /** A resource of a multipart/related root, shown in it: not in the
+      attachment list. */
+  void setResourceHidden( partNode * node ) { mHiddenResources[node] = true; }
+  /** @p bytes more of embedded URLs for the message shown; false (and
+      not counted) beyond the bound (data: URLs are copies). */
+  bool useEmbeddedBytes( unsigned int bytes );
+  /** Whether @p bytes more would be within that bound (not counted). */
+  bool mayUseEmbeddedBytes( unsigned int bytes ) const;
+  /** The children of @p scope (a multipart) by Content-ID, for
+      ObjectTreeParser::embedRelatedResources(): 0 for a Content-ID two
+      children share, and for the related root, multiparts and messages.
+      Collected once per message. */
+  const QMap<QString, partNode *> & embeddingScope( partNode * scope );
+  /** partNode::relatedRoot(), once per message. */
+  partNode * relatedRootOf( partNode * related );
+  /** An image that could not be embedded (tried once per message). */
+  bool embeddingFailed( partNode * node ) const { return mFailedResources.contains( node ); }
+  void setEmbeddingFailed( partNode * node ) { mFailedResources[node] = true; }
+  /** IMAP load on demand: @p node, an image the HTML shown embeds, is not
+      loaded yet.  It is fetched after the parse (once per message shown,
+      within the bounds of embedded bytes, number and size of the parts
+      fetched for it); the message is shown again when it arrives.  Every
+      part of the message a job of the account is fetching (an earlier
+      visit to the message, an attachment loaded) counts against the bounds
+      of number and size first, and is not fetched again.  A part of
+      unknown size is not fetched. */
+  void requestEmbeddedPart( partNode * node );
+
   KMReaderWin( QWidget *parent,
 	       QWidget *mainWindow,
 	       KActionCollection *actionCollection,
@@ -443,7 +480,7 @@ protected:
   /** Writes the given message part to a temporary file and returns the
       name of this file or QString::null if writing failed.
   */
-  QString writeMessagePartToTempFile( KMMessagePart* msgPart, int partNumber );
+
 
   /**
     Creates a temporary dir for saving attachments, etc.
@@ -497,6 +534,25 @@ private:
   bool mHtmlMail, mHtmlLoadExternal, mHtmlOverride, mHtmlLoadExtOverride;
   int mAtmCurrent;
   QString mAtmCurrentName;
+  // the message shown (cleared with every parse and message change)
+  QMap<partNode *, QString> mEmbeddedResources;
+  QMap<partNode *, bool> mHiddenResources;
+  unsigned int mEmbeddedBytes;
+  QMap<partNode *, QMap<QString, partNode *> > mEmbeddingScopes;
+  QMap<partNode *, partNode *> mRelatedRoots;
+  QMap<partNode *, bool> mFailedResources;
+  void forgetEmbeddedResources();
+  // images to fetch (IMAP load on demand), by part specifier: requested for
+  // the message shown (or still to request after the parse), the ones to
+  // request with their sizes, and the number and size of the ones this
+  // visit fetched (the transfers of the message are bounded too:
+  // fetchRequestedParts())
+  struct RequestedPart { QString specifier; unsigned int size; };
+  QMap<QString, bool> mRequestedParts;
+  QValueList<RequestedPart> mPendingParts;
+  unsigned int mRequestedCount;
+  Q_UINT64 mRequestedBytes;
+  void fetchRequestedParts( KMMessage * msg );
   KMMessage *mMessage;
   // widgets:
   QSplitter * mSplitter;

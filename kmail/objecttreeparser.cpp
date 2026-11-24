@@ -46,6 +46,8 @@
 #include "interfaces/htmlwriter.h"
 #include "htmlstatusbar.h"
 #include "csshelper.h"
+#include "cidrewriter.h"
+#include "imageheader.h"
 #include "bodypartformatter.h"
 #include "bodypartformatterfactory.h"
 #include "partnodebodypart.h"
@@ -97,12 +99,17 @@
 
 // other Qt headers
 #include <qtextcodec.h>
+#include <qmap.h>
+#include <qshared.h>
+#include <qvaluelist.h>
+#include <kurl.h>
 #include <qdir.h>
 #include <qfile.h>
 #include <qapplication.h>
 #include <kstyle.h>
 #include <qbuffer.h>
 #include <qpixmap.h>
+#include <qimage.h>
 #include <qpainter.h>
 #include <qregexp.h>
 
@@ -134,6 +141,11 @@ namespace KMail {
   };
 
 
+  // hasHtmlPart() of the nodes, for the parse
+  struct ObjectTreeParser::HtmlAvailability : public QShared {
+    QMap<const partNode *, bool> nodes;
+  };
+
   ObjectTreeParser::ObjectTreeParser( KMReaderWin * reader, const Kleo::CryptoBackend::Protocol * protocol,
                                       bool showOnlyOneMimePart, bool keepEncryptions,
                                       bool includeSignatures,
@@ -147,7 +159,8 @@ namespace KMail {
       mIncludeSignatures( includeSignatures ),
       mAttachmentStrategy( strategy ),
       mHtmlWriter( htmlWriter ),
-      mCSSHelper( cssHelper )
+      mCSSHelper( cssHelper ),
+      mHtmlAvailability( new HtmlAvailability )
   {
     if ( !attachmentStrategy() )
       mAttachmentStrategy = reader ? reader->attachmentStrategy()
@@ -166,12 +179,16 @@ namespace KMail {
       mIncludeSignatures( other.includeSignatures() ),
       mAttachmentStrategy( other.attachmentStrategy() ),
       mHtmlWriter( other.htmlWriter() ),
-      mCSSHelper( other.cssHelper() )
+      mCSSHelper( other.cssHelper() ),
+      mHtmlAvailability( other.mHtmlAvailability )
   {
-
+    mHtmlAvailability->ref();
   }
 
-  ObjectTreeParser::~ObjectTreeParser() {}
+  ObjectTreeParser::~ObjectTreeParser() {
+    if ( mHtmlAvailability->deref() )
+      delete mHtmlAvailability;
+  }
 
   void ObjectTreeParser::insertAndParseNewChildNode( partNode& startNode,
                                                      const char* content,
@@ -830,9 +847,11 @@ bool ObjectTreeParser::okDecryptMIME( partNode& data,
         htmlWriter()->queue( "</div><br><br>" );
       }
       if ( isolated )
-        htmlWriter()->queueIsolatedHtml( codecFor( curNode )->toUnicode( cstr ) );
+        htmlWriter()->queueIsolatedHtml( embedRelatedResources( curNode, codecFor( curNode )->toUnicode( cstr ) ) );
+      else if ( mReader->htmlMail() )
+        htmlWriter()->queue( embedRelatedResources( curNode, codecFor( curNode )->toUnicode( cstr ) ) );
       else
-        htmlWriter()->queue( codecFor( curNode )->toUnicode( mReader->htmlMail() ? cstr : KMMessage::html2source( cstr )));
+        htmlWriter()->queue( codecFor( curNode )->toUnicode( KMMessage::html2source( cstr ) ) );
       mReader->mColorBar->setHtmlMode();
       return true;
     }
@@ -1048,6 +1067,24 @@ namespace KMail {
     return true;
   }
 
+  // Once per node: nested alternatives (alternative > related >
+  // alternative > ...) each ask for their subtree, N levels would visit
+  // N x N nodes.  (A part decrypted during the parse is a child of a node
+  // parsed after every alternative above it has asked.)
+  bool ObjectTreeParser::hasHtmlPart( const partNode * node ) {
+    QMap<const partNode *, bool>::ConstIterator it = mHtmlAvailability->nodes.find( node );
+    if ( it != mHtmlAvailability->nodes.end() )
+      return it.data();
+    bool found = false;
+    if ( node->type() == DwMime::kTypeText && node->subType() == DwMime::kSubtypeHtml )
+      found = true;
+    else if ( node->type() != DwMime::kTypeMessage )
+      for ( const partNode * child = node->firstChild(); child && !found; child = child->nextSibling() )
+        found = hasHtmlPart( child );
+    mHtmlAvailability->nodes[node] = found;
+    return found;
+  }
+
   bool ObjectTreeParser::processMultiPartAlternativeSubtype( partNode * node, ProcessResult & ) {
     partNode * child = node->firstChild();
     if ( !child )
@@ -1055,6 +1092,15 @@ namespace KMail {
 
     partNode * dataHtml = child->findType( DwMime::kTypeText,
                                            DwMime::kSubtypeHtml, false, true );
+    if ( !dataHtml )
+      // The HTML with its images: multipart/related (RFC 2387) whose root
+      // is the HTML (or has it).
+      for ( partNode * n = child; n; n = n->nextSibling() )
+        if ( partNode * root = mReader ? mReader->relatedRootOf( n ) : n->relatedRoot() )
+          if ( hasHtmlPart( root ) ) {
+            dataHtml = n;
+            break;
+          }
     partNode * dataPlain = child->findType( DwMime::kTypeText,
                                             DwMime::kSubtypePlain, false, true );
 
@@ -1075,6 +1121,159 @@ namespace KMail {
 
     stdChildHandling( child );
     return true;
+  }
+
+  // RFC 2387: the root part is the document; the parts it references by
+  // Content-ID are its resources (images).  The root decides when its HTML
+  // is shown (embedRelatedResources()); everything else of the related,
+  // and every resource that could not be embedded, is an attachment.
+  bool ObjectTreeParser::processMultiPartRelatedSubtype( partNode * node, ProcessResult & ) {
+    partNode * root = node->relatedRoot();
+    if ( !root )
+      return false;
+    // The root, then the parts that are not embedded resources (before and
+    // after the root), as multipart/mixed does.
+    stdChildHandling( root );
+    stdChildHandling( node->firstChild() );
+    return true;
+  }
+
+  namespace {
+    // The images a shown HTML part can use by Content-ID: the parts of
+    // its scope (see embedRelatedResources()).
+    class ScopeResolver : public CidResolver {
+    public:
+      ScopeResolver( KMReaderWin * reader, const QMap<QString, partNode *> & parts, bool isolated, bool resources )
+        : mReader( reader ), mParts( parts ), mIsolated( isolated ), mResources( resources ) {}
+
+      QString urlFor( const QString & id, bool shown ) {
+        QMap<QString, partNode *>::ConstIterator it = mParts.find( id );
+        if ( it == mParts.end() || !it.data() )
+          return QString::null;   // none, ambiguous, or not one to embed
+        partNode * part = it.data();
+        if ( mReader->embeddingFailed( part ) )
+          return QString::null;   // tried once: stays an attachment
+        QString url = mReader->embeddedResourceURL( part );
+        if ( url.isEmpty() ) {
+          if ( !isEmbeddableImage( part ) ) {
+            mReader->setEmbeddingFailed( part );
+            return QString::null;   // stays an attachment
+          }
+          if ( !part->msgPart().isComplete() ) {
+            // IMAP load on demand: the image is fetched (within the bound)
+            // and the message shown again; an attachment until then
+            mReader->requestEmbeddedPart( part );
+            return QString::null;
+          }
+          url = makeURL( part );
+          // kept for the message: within the bound
+          if ( url.isEmpty() || !mReader->useEmbeddedBytes( url.length() ) ) {
+            mReader->setEmbeddingFailed( part );
+            return QString::null;   // stays an attachment
+          }
+          mReader->addEmbeddedResource( part, url );
+        }
+        // every reference is a copy (data: URLs): within the bound too
+        if ( !mReader->useEmbeddedBytes( url.length() ) )
+          return QString::null;
+        // A resource of the related root, shown for sure: not an
+        // attachment.  (In a multipart/mixed, cid: references are
+        // resolved as KMail always did, the parts stay attachments.)
+        if ( mResources && shown && !part->processed() ) {
+          part->setProcessed( true, false );
+          mReader->setResourceHidden( part );
+        }
+        return url;
+      }
+
+    private:
+      // An image of a format both engines show (PNG, JPEG, GIF, BMP).
+      static bool isEmbeddableImage( partNode * part ) {
+        if ( part->type() != DwMime::kTypeImage )
+          return false;
+        const QString subtype = QString::fromLatin1( part->msgPart().subtypeStr() ).lower();
+        return subtype == "png" || subtype == "jpeg" || subtype == "jpg" || subtype == "pjpeg"
+               || subtype == "gif" || subtype == "bmp" || subtype == "x-ms-bmp";
+      }
+
+      // What the writer shows the image with: WebKit (an isolated HTML
+      // document, the part's mail mode takes data: images only) a data:
+      // URL, KHTML the temporary file.  Loaded images (isEmbeddableImage())
+      // that decode: a broken image is not shown, its part stays an
+      // attachment.  Nothing is decoded beyond the bound.
+      QString makeURL( partNode * part ) {
+        const QString subtype = QString::fromLatin1( part->msgPart().subtypeStr() ).lower();
+        // a data: URL is at most 4/3 of the decoded size, which is at most
+        // the encoded size (base64, quoted-printable)
+        const unsigned int estimate = part->msgPart().encodedSize() / 3 * 4 + 64;
+        if ( !mReader->mayUseEmbeddedBytes( 2 * estimate ) )
+          return QString::null;
+        const QByteArray data = part->msgPart().bodyDecodedBinary();
+        // the bitmap the decoder allocates, from the headers, before
+        // decoding, and its colour table: at most 64 MB (16 megapixels of
+        // 32 bits)
+        uint width = 0, height = 0, bytesPerPixel = 0, tableBytes = 0;
+        if ( data.isEmpty() || !decoderBitmapSize( data, width, height, bytesPerPixel, &tableBytes )
+             || width == 0 || height == 0 || width > 65535 || height > 65535
+             || (unsigned long long)width * height * bytesPerPixel + tableBytes > 64ULL * 1024 * 1024 )
+          return QString::null;
+        QImage image;
+        if ( !image.loadFromData( data ) )
+          return QString::null;
+        if ( mIsolated )
+          return "data:image/" + subtype + ";base64," + QString::fromLatin1( KCodecs::base64Encode( data ) );
+        const QString fileName = mReader->writeMessagePartToTempFile( &part->msgPart(), part->nodeId() );
+        return fileName.isEmpty() ? QString::null : "file:" + KURL::encode_string( fileName );
+      }
+
+      KMReaderWin * mReader;
+      const QMap<QString, partNode *> & mParts;
+      bool mIsolated, mResources;
+    };
+  }
+
+  // An HTML part shown as HTML.  Its scope: the nearest multipart/related
+  // above it whose root it is (or is in): the parts of that related (only
+  // of that one) it shows by their Content-ID become its resources, shown
+  // in place and not as attachments.  Without one, the nearest
+  // multipart/mixed: references to its parts are resolved, the parts stay
+  // attachments (as KMail always did).  The references are rewritten to
+  // the URLs the writer shows the images with (rewriteCidReferences()):
+  // no Content-ID is left for the writer to resolve, none can reach a part
+  // of another scope.  A Content-ID two children of the scope share is
+  // nobody's; a part that cannot be embedded (not an image of a known
+  // format that decodes, not loaded, beyond the bound) stays an
+  // attachment, and so does one only CSS or an image hidden by its own
+  // attributes references.  An image hidden by an ancestor or a style
+  // sheet (display:none around it) is not detected: its part is hidden
+  // from the attachment list all the same (accepted: it stays in the MIME
+  // tree).
+  // A scope's Content-IDs are collected once per message (the reader).
+  QString ObjectTreeParser::embedRelatedResources( partNode * htmlNode, const QString & html ) {
+    if ( !mReader || !htmlWriter() )
+      return html;
+    if ( html.find( "cid", 0, false ) < 0 && html.find( '&' ) < 0 )
+      return html;   // (cid: can be written with character references)
+    partNode * scope = 0;
+    partNode * mixed = 0;
+    for ( partNode * child = htmlNode, * p = htmlNode->parentNode(); p; child = p, p = p->parentNode() ) {
+      if ( p->type() == DwMime::kTypeMessage )
+        break;
+      if ( p->type() == DwMime::kTypeMultipart && p->subType() == DwMime::kSubtypeRelated ) {
+        if ( child == mReader->relatedRootOf( p ) )
+          scope = p;
+        break;   // the nearest related only
+      }
+      if ( !mixed && p->type() == DwMime::kTypeMultipart && p->subType() == DwMime::kSubtypeMixed )
+        mixed = p;
+    }
+    const bool resources = scope != 0;
+    if ( !scope )
+      scope = mixed;
+    if ( !scope )
+      return html;
+    ScopeResolver resolver( mReader, mReader->embeddingScope( scope ), htmlWriter()->isolatesHtml(), resources );
+    return rewriteCidReferences( html, resolver );
   }
 
   bool ObjectTreeParser::processMultiPartDigestSubtype( partNode * node, ProcessResult & result ) {

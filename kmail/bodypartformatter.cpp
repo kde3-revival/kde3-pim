@@ -120,6 +120,7 @@ namespace {
 
   CREATE_BODY_PART_FORMATTER(MultiPartMixed)
   CREATE_BODY_PART_FORMATTER(MultiPartAlternative)
+  CREATE_BODY_PART_FORMATTER(MultiPartRelated)
   CREATE_BODY_PART_FORMATTER(MultiPartSigned)
   CREATE_BODY_PART_FORMATTER(MultiPartEncrypted)
 
@@ -165,7 +166,7 @@ static const SubtypeBuiltin multipartSubtypeBuiltins[] = {
   { "alternative", &MultiPartAlternativeBodyPartFormatter::create },
   //{ "digest", &MultiPartDigestFormatter::create },
   //{ "parallel", &MultiPartParallelFormatter::create },
-  //{ "related", &MultiPartRelatedFormatter::create },
+  { "related", &MultiPartRelatedBodyPartFormatter::create },
   { "signed", &MultiPartSignedBodyPartFormatter::create },
   { "encrypted", &MultiPartEncryptedBodyPartFormatter::create },
   //{ "report", &MultiPartReportFormatter::create },
@@ -261,6 +262,11 @@ static const KMail::BodyPartFormatter * createForMultiPart( const char * subtype
     case 'E':
       if ( kasciistricmp( subtype, "encrypted" ) == 0 )
 	return MultiPartEncryptedBodyPartFormatter::create();
+      break;
+    case 'r':
+    case 'R':
+      if ( kasciistricmp( subtype, "related" ) == 0 )
+	return MultiPartRelatedBodyPartFormatter::create();
       break;
     case 's':
     case 'S':

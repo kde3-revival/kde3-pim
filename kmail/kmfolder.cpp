@@ -346,6 +346,11 @@ FolderJob* KMFolder::createJob( KMMessage *msg, FolderJob::JobType jt,
   return mStorage->createJob( msg, jt, folder, partSpecifier, as );
 }
 
+QMap<QString, int> KMFolder::retrievingParts( const KMMessage * msg ) const
+{
+  return mStorage->retrievingParts( msg );
+}
+
 FolderJob* KMFolder::createJob( QPtrList<KMMessage>& msgList,
                                 const QString& sets,
                                 FolderJob::JobType jt, KMFolder *folder ) const

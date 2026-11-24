@@ -73,6 +73,10 @@ public:
   virtual ~FolderJob();
 
   QPtrList<KMMessage> msgList() const;
+
+  /** The part of the message the job retrieves (IMAP: a section such as
+      "2.1", "HEADER", or none for the whole message). */
+  QString partSpecifier() const { return mPartSpecifier; }
   /**
    * Start the job
    */

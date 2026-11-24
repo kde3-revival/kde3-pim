@@ -22,6 +22,7 @@
 
 // for large file support
 #include <config.h>
+#include <qmap.h>
 
 #include "kmfoldernode.h"
 #include "kmfoldertype.h"
@@ -201,6 +202,12 @@ public:
   FolderJob* createJob( QPtrList<KMMessage>& msgList, const QString& sets,
                         FolderJob::JobType jt = FolderJob::tGetMessage,
                         KMFolder *folder = 0 ) const;
+
+  /** The parts of @p msg (the message or another copy of it with its
+      serial number) jobs retrieve or will, IMAP load on demand: their
+      sections (such as "2.1"; not headers) and sizes (the BODYSTRUCTURE's,
+      0 if not known), whoever started them. */
+  QMap<QString, int> retrievingParts( const KMMessage * msg ) const;
 
   /** Provides access to the basic message fields that are also stored
     in the index. Whenever you only need subject, from, date, status

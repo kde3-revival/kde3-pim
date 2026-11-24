@@ -553,6 +553,9 @@ KMReaderWin::KMReaderWin(QWidget *aParent,
   mLastSerNum = 0;
   mWaitingForSerNum = 0;
   mMessage = 0;
+  mEmbeddedBytes = 0;
+  mRequestedCount = 0;
+  mRequestedBytes = 0;
   mLastStatus = KMMsgStatusUnknown;
   mMsgDisplay = true;
   mPrinting = false;
@@ -884,6 +887,14 @@ void KMReaderWin::update( KMail::Interface::Observable * observable )
   if ( !mAtmUpdate ) {
     // reparse the msg
     kdDebug(5006) << "KMReaderWin::update - message" << endl;
+    if ( mWebWriter ) {
+      // WebKit shows every document it gets: parts of a message that
+      // arrive one after the other (IMAP load on demand) would each show
+      // the message again.  One update for a burst of them: 200 ms after
+      // the last one (the cover of a message switch stays up meanwhile).
+      mUpdateReaderWinTimer.start( 200, true );
+      return;
+    }
     updateReaderWin();
     return;
   }
@@ -1247,6 +1258,25 @@ void KMReaderWin::setMsg(KMMessage* aMsg, bool force)
   // If not forced and there is aMsg and aMsg is same as mMsg then return
   if (!force && aMsg && mLastSerNum != 0 && aMsg->getMsgSerNum() == mLastSerNum)
     return;
+
+  // WebKit: another message (or none) at once clears the reader; the part
+  // would keep the previous message until the next one is ready (or
+  // downloaded, with IMAP load on demand).
+  if ( mWebWriter && mMsgDisplay ) {
+    const bool other = aMsg ? ( aMsg->getMsgSerNum() != mLastSerNum ||
+                                ( mLastSerNum == 0 && aMsg != mMessage ) )
+                            : ( mLastSerNum != 0 || mMessage );
+    if ( other )
+      mWebWriter->clearView( mCSSHelper->backgroundColor() );
+  }
+  // the images embedded into the previous message are not this one's
+  if ( aMsg ? aMsg->getMsgSerNum() != mLastSerNum || mLastSerNum == 0 : true ) {
+    forgetEmbeddedResources();
+    mRequestedParts.clear();
+    mPendingParts.clear();
+    mRequestedCount = 0;
+    mRequestedBytes = 0;
+  }
 
   // (de)register as observer
   if (aMsg && message())
@@ -1737,8 +1767,10 @@ void KMReaderWin::parseMsg(KMMessage* aMsg)
   htmlWriter()->queue( writeMsgHeader(aMsg, hasVCard, true ) );
 
   // show message content
+  forgetEmbeddedResources();
   ObjectTreeParser otp( this );
   otp.parseObjectTree( mRootNode );
+  fetchRequestedParts( aMsg );
 
   // store encrypted/signed status information in the KMMessage
   //  - this can only be done *after* calling parseObjectTree()
@@ -1857,6 +1889,142 @@ QString KMReaderWin::writeMsgHeader(KMMessage* aMsg, bool hasVCard, bool topLeve
 }
 
 
+
+//-----------------------------------------------------------------------------
+void KMReaderWin::addEmbeddedResource( partNode * node, const QString & url )
+{
+  mEmbeddedResources[node] = url;
+}
+
+QString KMReaderWin::embeddedResourceURL( partNode * node ) const
+{
+  QMap<partNode *, QString>::ConstIterator it = mEmbeddedResources.find( node );
+  return it == mEmbeddedResources.end() ? QString::null : it.data();
+}
+
+static const unsigned int embeddedBytesLimit = 64 * 1024 * 1024;
+
+bool KMReaderWin::mayUseEmbeddedBytes( unsigned int bytes ) const
+{
+  return bytes <= embeddedBytesLimit && mEmbeddedBytes <= embeddedBytesLimit - bytes;
+}
+
+bool KMReaderWin::useEmbeddedBytes( unsigned int bytes )
+{
+  if ( !mayUseEmbeddedBytes( bytes ) )
+    return false;
+  mEmbeddedBytes += bytes;
+  return true;
+}
+
+partNode * KMReaderWin::relatedRootOf( partNode * related )
+{
+  QMap<partNode *, partNode *>::ConstIterator it = mRelatedRoots.find( related );
+  if ( it != mRelatedRoots.end() )
+    return it.data();
+  return mRelatedRoots[related] = related->relatedRoot();
+}
+
+const QMap<QString, partNode *> & KMReaderWin::embeddingScope( partNode * scope )
+{
+  QMap<partNode *, QMap<QString, partNode *> >::Iterator found = mEmbeddingScopes.find( scope );
+  if ( found != mEmbeddingScopes.end() )
+    return found.data();
+  QMap<QString, partNode *> & parts = mEmbeddingScopes[scope];
+  const partNode * root = relatedRootOf( scope );
+  for ( partNode * child = scope->firstChild(); child; child = child->nextSibling() ) {
+    const QString id = child->contentIdNoBrackets();
+    if ( id.isEmpty() )
+      continue;
+    const bool candidate = child != root && child->type() != DwMime::kTypeMultipart
+                           && child->type() != DwMime::kTypeMessage;
+    // a Content-ID two children share is nobody's
+    parts[id] = ( candidate && !parts.contains( id ) ) ? child : 0;
+  }
+  return parts;
+}
+
+// at most this many images fetched for a message
+static const unsigned int requestedPartsLimit = 256;
+
+void KMReaderWin::requestEmbeddedPart( partNode * node )
+{
+  const QString specifier = node->msgPart().partSpecifier();
+  if ( specifier.isEmpty() || mRequestedParts.contains( specifier ) )
+    return;
+  // its size from the BODYSTRUCTURE (encoded; as large as an int holds
+  // for a larger one, KMMessagePart); 0 when not known: not fetched (it
+  // could be any size).  The data: URL and a copy of it must fit too
+  // (see ObjectTreeParser's ScopeResolver).
+  const int size = node->dwPart() ? node->dwPart()->BodySize() : 0;
+  if ( size <= 0 || (unsigned int)size > embeddedBytesLimit
+       || !mayUseEmbeddedBytes( 2 * ( (unsigned int)size / 3 * 4 + 64 ) ) )
+    return;   // stays an attachment (a click loads it)
+  mRequestedParts[specifier] = true;
+  RequestedPart part;
+  part.specifier = specifier;
+  part.size = size;
+  mPendingParts.append( part );
+}
+
+void KMReaderWin::fetchRequestedParts( KMMessage * msg )
+{
+  const QValueList<RequestedPart> parts = mPendingParts;
+  mPendingParts.clear();
+  KMFolder * folder = msg ? msg->parent() : 0;
+  if ( parts.isEmpty() || !folder || folder->folderType() != KMFolderTypeImap )
+    return;
+  // The parts of the message jobs are fetching (whoever started them: this
+  // reader on an earlier visit, an attachment loaded, the strategy) count
+  // first, every one of them, whether its image would still be embedded
+  // or not: the bounds are those of the transfers of the message.  One of
+  // unknown size counts as the whole bound.  They are not fetched again.
+  const QMap<QString, int> inFlight = folder->retrievingParts( msg );
+  Q_UINT64 inFlightBytes = 0;
+  for ( QMap<QString, int>::ConstIterator it = inFlight.begin(); it != inFlight.end(); ++it )
+    inFlightBytes += it.data() > 0 ? (unsigned int)it.data() : embeddedBytesLimit;
+  unsigned int inFlightCount = inFlight.count();
+  // New ones within what is left, and within the bounds of the parts this
+  // visit fetched; each part arriving updates the message, which notifies
+  // the reader (update()): the message is shown again with the image
+  for ( QValueList<RequestedPart>::ConstIterator it = parts.begin(); it != parts.end(); ++it ) {
+    if ( inFlight.contains( (*it).specifier ) )
+      continue;
+    if ( inFlightCount >= requestedPartsLimit || inFlightBytes + (*it).size > embeddedBytesLimit
+         || mRequestedCount >= requestedPartsLimit || mRequestedBytes + (*it).size > embeddedBytesLimit ) {
+      // stays an attachment (a click loads it); asked again by a later
+      // parse (a part arriving), when transfers have ended
+      mRequestedParts.remove( (*it).specifier );
+      continue;
+    }
+    ++inFlightCount;
+    inFlightBytes += (*it).size;
+    ++mRequestedCount;
+    mRequestedBytes += (*it).size;
+    FolderJob * job = folder->createJob( msg, FolderJob::tGetMessage, 0, (*it).specifier );
+    job->setCancellable( false );
+    job->start();
+  }
+  if ( getenv( "KMAIL_LOD_STATS" ) ) {
+    // (tests) what is in transfer for the message now, by the account's jobs
+    const QMap<QString, int> now = folder->retrievingParts( msg );
+    Q_UINT64 bytes = 0;
+    for ( QMap<QString, int>::ConstIterator it = now.begin(); it != now.end(); ++it )
+      bytes += it.data();
+    fprintf( stderr, "kmail-lod-stats serial %lu in transfer %u parts %llu bytes\n",
+             msg->getMsgSerNum(), (unsigned int)now.count(), (unsigned long long)bytes );
+  }
+}
+
+void KMReaderWin::forgetEmbeddedResources()
+{
+  mEmbeddedResources.clear();
+  mHiddenResources.clear();
+  mEmbeddingScopes.clear();
+  mRelatedRoots.clear();
+  mFailedResources.clear();
+  mEmbeddedBytes = 0;
+}
 
 //-----------------------------------------------------------------------------
 QString KMReaderWin::writeMessagePartToTempFile( KMMessagePart* aMsgPart,
@@ -3010,6 +3178,8 @@ QString KMReaderWin::renderAttachments(partNode * node, const QColor &bgColor )
           || node->msgPart().subtypeStr() == "pkcs7-signature";
     }
     typeBlacklisted = typeBlacklisted || node == mRootNode;
+    // An image the HTML of a multipart/related shows: not an attachment.
+    typeBlacklisted = typeBlacklisted || mHiddenResources.contains( node );
     if ( !label.isEmpty() && !icon.isEmpty() && !typeBlacklisted ) {
       html += "<div style=\"float:left;\">";
       html += QString::fromLatin1( "<span style=\"white-space:nowrap; border-width: 0px; border-left-width: 5px; border-color: %1; 2px; border-left-style: solid;\">" ).arg( bgColor.name() );

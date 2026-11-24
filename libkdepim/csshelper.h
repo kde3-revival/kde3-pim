@@ -64,6 +64,9 @@ class CSSHelper {
 
     QFont bodyFont( bool fixedFont = false, bool printing = false ) const;
 
+    /** The background colour of the reader's page. */
+    QColor backgroundColor() const { return mBackgroundColor; }
+
     void setBodyFont( const QFont& font );
     void setPrintFont( const QFont& font );
 

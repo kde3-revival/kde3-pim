@@ -99,8 +99,10 @@ namespace KMail {
 
   class ObjectTreeParser {
     class CryptoProtocolSaver;
+    struct HtmlAvailability;
     /** Internal. Copies the context of @p other, but not it's rawReplyString() */
     ObjectTreeParser( const ObjectTreeParser & other );
+    ObjectTreeParser & operator=( const ObjectTreeParser & );   // not defined
   public:
     ObjectTreeParser( KMReaderWin * reader=0, const Kleo::CryptoBackend::Protocol * protocol=0,
                       bool showOneMimePart=false, bool keepEncryptions=false,
@@ -159,6 +161,10 @@ namespace KMail {
         kroupware hacks) */
     void stdChildHandling( partNode * child );
 
+    /** @p html of @p htmlNode, shown as HTML, with the resources of its
+        multipart/related embedded (see the implementation). */
+    QString embedRelatedResources( partNode * htmlNode, const QString & html );
+
     void defaultHandling( partNode * node, ProcessResult & result );
 
     /** 1. Create a new partNode using 'content' data and Content-Description
@@ -215,6 +221,7 @@ namespace KMail {
 
     bool processMultiPartMixedSubtype( partNode * node, ProcessResult & result );
     bool processMultiPartAlternativeSubtype( partNode * node, ProcessResult & result );
+    bool processMultiPartRelatedSubtype( partNode * node, ProcessResult & result );
     bool processMultiPartDigestSubtype( partNode * node, ProcessResult & result );
     bool processMultiPartParallelSubtype( partNode * node, ProcessResult & result );
     bool processMultiPartSignedSubtype( partNode * node, ProcessResult & result );
@@ -265,6 +272,11 @@ namespace KMail {
 
     const QTextCodec * codecFor( partNode * node ) const;
 
+    /** Whether the subtree of @p node has an HTML part (not in attached
+        messages); computed once per node for the parse (shared by the
+        parsers of the parts). */
+    bool hasHtmlPart( const partNode * node );
+
 #ifdef MARCS_DEBUG
     void dumpToFile( const char * filename, const char * dataStart, size_t dataLen );
 #else
@@ -283,6 +295,7 @@ namespace KMail {
     const KMail::AttachmentStrategy * mAttachmentStrategy;
     KMail::HtmlWriter * mHtmlWriter;
     KMail::CSSHelper * mCSSHelper;
+    HtmlAvailability * mHtmlAvailability;   // shared with the copies
     // DataUrl Icons cache
     QString mCollapseIcon;
     QString mExpandIcon;

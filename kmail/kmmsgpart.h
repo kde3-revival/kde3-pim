@@ -113,6 +113,8 @@ public:
 
   /** Returns decoded length of body. */
   int decodedSize(void) const;
+  /** Size of the body as it is stored (encoded), without copying it. */
+  uint encodedSize() const { return mBody.size(); }
 
   /** Get or set the 'Content-Type' header field
    The member functions that involve enumerated types (ints)

@@ -37,10 +37,6 @@
 #include <khtml_part.h>
 #include <khtmlview.h>
 
-#include <dom/dom_string.h>
-#include <dom/html_document.h>
-#include <dom/html_image.h>
-#include <dom/html_misc.h>
 
 #include <cassert>
 
@@ -65,7 +61,6 @@ namespace KMail {
       reset();
     }
 
-    mEmbeddedPartMap.clear();
 
     // clear the widget:
     mHtmlPart->view()->setUpdatesEnabled( false );
@@ -82,7 +77,6 @@ namespace KMail {
     kdWarning( mState != Begun, 5006 ) << "KHtmlPartHtmlWriter: end() called on non-begun or queued session!" << endl;
     mHtmlPart->end();
 
-    resolveCidUrls();
 
     mHtmlPart->view()->viewport()->setUpdatesEnabled( true );
     mHtmlPart->view()->setUpdatesEnabled( true );
@@ -127,26 +121,9 @@ namespace KMail {
     }
   }
 
-  void KHtmlPartHtmlWriter::embedPart( const QCString & contentId,
-                                       const QString & contentURL ) {
-    mEmbeddedPartMap[QString(contentId)] = contentURL;
-  }
-
-  void KHtmlPartHtmlWriter::resolveCidUrls()
-  {
-    DOM::HTMLDocument document = mHtmlPart->htmlDocument();
-    DOM::HTMLCollection images = document.images();
-    for ( DOM::Node node = images.firstItem(); !node.isNull(); node = images.nextItem() ) {
-      DOM::HTMLImageElement image( node );
-      KURL url( image.src().string() );
-      if ( url.protocol() == "cid" ) {
-        EmbeddedPartMap::const_iterator it = mEmbeddedPartMap.find( url.path() );
-        if ( it != mEmbeddedPartMap.end() ) {
-          kdDebug(5006) << "Replacing " << url.prettyURL() << " by " << it.data() << endl;
-          image.setSrc( it.data() );
-        }
-      }
-    }
+  // cid: URLs are resolved by ObjectTreeParser (embedRelatedResources()),
+  // within the scope of the HTML part: no document-wide map here.
+  void KHtmlPartHtmlWriter::embedPart( const QCString &, const QString & ) {
   }
 
 } // namespace KMail

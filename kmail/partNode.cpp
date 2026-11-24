@@ -603,6 +603,33 @@ bool partNode::hasContentDispositionInline() const
     return false;
 }
 
+static QString withoutAngleBrackets( QString id )
+{
+  id = id.stripWhiteSpace();
+  if ( id.startsWith( "<" ) && id.endsWith( ">" ) )
+    id = id.mid( 1, id.length() - 2 ).stripWhiteSpace();
+  return id;
+}
+
+QString partNode::contentIdNoBrackets() const
+{
+  if ( !dwPart() || !dwPart()->hasHeaders() || !dwPart()->Headers().HasContentId() )
+    return QString::null;
+  return withoutAngleBrackets( QString::fromLatin1( dwPart()->Headers().ContentId().AsString().c_str() ) );
+}
+
+partNode * partNode::relatedRoot() const
+{
+  if ( type() != DwMime::kTypeMultipart || subType() != DwMime::kSubtypeRelated )
+    return 0;
+  const QString start = withoutAngleBrackets( contentTypeParameter( "start" ) );
+  if ( !start.isEmpty() )
+    for ( partNode * child = firstChild(); child; child = child->nextSibling() )
+      if ( child->contentIdNoBrackets() == start )
+        return child;
+  return firstChild();
+}
+
 const QString& partNode::trueFromAddress() const
 {
   const partNode* node = this;
