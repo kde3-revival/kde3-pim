@@ -621,8 +621,9 @@ void NewMailBalloon::slotAction( int action )
   }
 }
 
-// Read: the main window in front, the folder of the (first) message
-// selected and the message in it (its folder only: count only).
+// Read: the main window in front, the folder of the first message
+// still there selected and the message in it (its folder only: count
+// only).
 void NewMailBalloon::showMessage( const Entry & entry )
 {
   KMSystemTray * tray = mMainWidget->systray();
@@ -636,16 +637,22 @@ void NewMailBalloon::showMessage( const Entry & entry )
     kmkernel->raise();
   }
 
+  // the first of its messages that is still there, else its first
+  // folder that is
   KMFolder * folder = 0;
-  int idx = -1;
   mPendingSerNum = 0;
-  if ( !entry.items.isEmpty() ) {
-    KMMsgDict::instance()->getLocation( entry.items.first().serNum, &folder, &idx );
-    if ( folder && idx >= 0 )
-      mPendingSerNum = entry.items.first().serNum;
+  for ( QValueList<Q_UINT32>::ConstIterator it = entry.serNums.begin(); it != entry.serNums.end(); ++it ) {
+    KMFolder * where = 0;
+    int idx = -1;
+    KMMsgDict::instance()->getLocation( *it, &where, &idx );
+    if ( where && idx >= 0 ) {
+      folder = where;
+      mPendingSerNum = *it;
+      break;
+    }
   }
-  if ( !folder && !entry.folderIds.isEmpty() )
-    folder = kmkernel->findFolderById( entry.folderIds.first() );
+  for ( QStringList::ConstIterator it = entry.folderIds.begin(); !folder && it != entry.folderIds.end(); ++it )
+    folder = kmkernel->findFolderById( *it );
   if ( !folder )
     return;
   mPendingFolder = folder;
