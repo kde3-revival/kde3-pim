@@ -563,6 +563,7 @@ private: // data
   QButtonGroup *mSystemTrayGroup;
   QCheckBox    *mNewMailBalloonCheck;
   KIntSpinBox  *mNewMailBalloonTimeoutSpin;
+  QLabel       *mNewMailBalloonTimeoutLabel;
 };
 
 class KDE_EXPORT AppearancePage : public ConfigModuleWithTabs {

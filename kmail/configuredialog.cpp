@@ -2502,10 +2502,10 @@ AppearancePageSystemTrayTab::AppearancePageSystemTrayTab( QWidget * parent,
   mNewMailBalloonTimeoutSpin = new KIntSpinBox( 0, 3600, 1, 10, 10, this );
   mNewMailBalloonTimeoutSpin->setSuffix( i18n(" sec") );
   mNewMailBalloonTimeoutSpin->setSpecialValueText( i18n("never") );
-  QLabel * label = new QLabel( mNewMailBalloonTimeoutSpin,
-                               i18n("Hide the balloon a&fter:"), this );
+  mNewMailBalloonTimeoutLabel = new QLabel( mNewMailBalloonTimeoutSpin,
+                                            i18n("Hide the balloon a&fter:"), this );
   hlay->addSpacing( 20 );
-  hlay->addWidget( label );
+  hlay->addWidget( mNewMailBalloonTimeoutLabel );
   hlay->addWidget( mNewMailBalloonTimeoutSpin );
   hlay->addStretch( 1 );
   QWhatsThis::add( mNewMailBalloonTimeoutSpin,
@@ -2513,7 +2513,7 @@ AppearancePageSystemTrayTab::AppearancePageSystemTrayTab( QWidget * parent,
   connect( mNewMailBalloonTimeoutSpin, SIGNAL( valueChanged( int ) ),
            this, SLOT( slotEmitChanged( void ) ) );
   connect( mNewMailBalloonCheck, SIGNAL( toggled( bool ) ),
-           label, SLOT( setEnabled( bool ) ) );
+           mNewMailBalloonTimeoutLabel, SLOT( setEnabled( bool ) ) );
   connect( mNewMailBalloonCheck, SIGNAL( toggled( bool ) ),
            mNewMailBalloonTimeoutSpin, SLOT( setEnabled( bool ) ) );
 
@@ -2529,6 +2529,7 @@ void AppearancePage::SystemTrayTab::doLoadFromGlobalSettings() {
   mNewMailBalloonCheck->setChecked( GlobalSettings::self()->showNewMailBalloon() );
   mNewMailBalloonTimeoutSpin->setValue( GlobalSettings::self()->newMailBalloonTimeout() );
   mNewMailBalloonTimeoutSpin->setEnabled( mNewMailBalloonCheck->isChecked() );
+  mNewMailBalloonTimeoutLabel->setEnabled( mNewMailBalloonCheck->isChecked() );
 }
 
 void AppearancePage::SystemTrayTab::installProfile( KConfig * profile ) {
