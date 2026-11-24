@@ -541,8 +541,12 @@ void NewMailBalloon::showBalloon()
   balloon->setText( lines.join( "\n" ) );
   balloon->setPixmap( picture );
   balloon->insertAction( i18n( "to read a message", "Read" ), ReadAction );
-  if ( !entry.items.isEmpty() )
-    balloon->insertAction( i18n( "Mark as Read" ), MarkAsReadAction );
+  // (only the messages known here: all, or as many as it says)
+  if ( !entry.serNums.isEmpty() )
+    balloon->insertAction( (int)entry.serNums.count() == entry.count
+                           ? i18n( "Mark as Read" )
+                           : i18n( "Mark 1 as Read", "Mark %n as Read", entry.serNums.count() ),
+                           MarkAsReadAction );
   balloon->insertAction( i18n( "Ignore" ), IgnoreAction );
   balloon->setTimeout( QMAX( 0, GlobalSettings::self()->newMailBalloonTimeout() ) * 1000 );   // 0: none
   connect( balloon, SIGNAL( clicked() ), SLOT( slotClicked() ) );
