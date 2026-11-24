@@ -1642,13 +1642,15 @@ void KMFolderImap::slotGetMessagesData(KIO::Job * job, const QByteArray & data)
             delete md;
           }
         }
-        // (known: its status and serial number were cached)
+        // (known: its status and serial number were cached; the last UID
+        // before this one: lastUid() reads the last message without one)
         const bool cached = md != 0;
+        const ulong lastUidBefore = lastUid();
         KMFolderMbox::addMsg(msg, 0);
         // Merge with the flags from the server.
         flagsToStatus((KMMsgBase*)msg, flags, true, mUploadAllFlags ? 31 : mPermanentFlags);
         // A message new on the server during a mail check: new mail
-        if ( !cached && uid > lastUid() && msg->isNew() )
+        if ( !cached && uid > lastUidBefore && msg->isNew() )
           kmkernel->acctMgr()->addNewMessage( msg->getMsgSerNum() );
         // set the correct size
         msg->setMsgSizeServer( msg->headerField("X-Length").toUInt() );
