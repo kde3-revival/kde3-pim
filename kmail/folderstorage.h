@@ -165,6 +165,11 @@ public:
                                 FolderJob::JobType jt = FolderJob::tGetMessage,
                                 KMFolder *folder = 0 ) const;
 
+  /** Whether a job retrieves (or will) the part @p specifier of @p msg
+      (the message or another copy of it with its serial number): IMAP
+      load on demand. */
+  virtual bool isRetrievingPart( const KMMessage *, const QString & ) const { return false; }
+
   /** Provides access to the basic message fields that are also stored
     in the index. Whenever you only need subject, from, date, status
     you should use this method instead of getMsg() because getMsg()

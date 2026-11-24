@@ -93,6 +93,11 @@ public:
    * Queues a message for automatic filtering
    */
   void execFilters(Q_UINT32 serNum);
+
+  /** Whether a job of this account retrieves (or will) the part
+      @p specifier of @p msg (the message or another copy of it with its
+      serial number). */
+  bool isRetrievingPart( const KMMessage * msg, const QString & specifier ) const;
     
 public slots:
   /**

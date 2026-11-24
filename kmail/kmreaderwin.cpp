@@ -554,6 +554,7 @@ KMReaderWin::KMReaderWin(QWidget *aParent,
   mWaitingForSerNum = 0;
   mMessage = 0;
   mEmbeddedBytes = 0;
+  mRequestedCount = 0;
   mRequestedBytes = 0;
   mLastStatus = KMMsgStatusUnknown;
   mMsgDisplay = true;
@@ -1273,6 +1274,7 @@ void KMReaderWin::setMsg(KMMessage* aMsg, bool force)
     forgetEmbeddedResources();
     mRequestedParts.clear();
     mPendingParts.clear();
+    mRequestedCount = 0;
     mRequestedBytes = 0;
   }
 
@@ -1954,30 +1956,42 @@ void KMReaderWin::requestEmbeddedPart( partNode * node )
   // for a larger one, KMMessagePart); 0 when not known: not fetched (it
   // could be any size).  The data: URL and a copy of it must fit too
   // (see ObjectTreeParser's ScopeResolver).
-  const int signedSize = node->dwPart() ? node->dwPart()->BodySize() : 0;
-  if ( signedSize <= 0 )
-    return;   // stays an attachment (a click loads it)
-  const unsigned int size = signedSize;
-  const unsigned int estimate = size / 3 * 4 + 64;
-  if ( mRequestedParts.count() >= requestedPartsLimit || size > embeddedBytesLimit
-       || mRequestedBytes > embeddedBytesLimit - size || !mayUseEmbeddedBytes( 2 * estimate ) )
+  const int size = node->dwPart() ? node->dwPart()->BodySize() : 0;
+  if ( size <= 0 || (unsigned int)size > embeddedBytesLimit
+       || !mayUseEmbeddedBytes( 2 * ( (unsigned int)size / 3 * 4 + 64 ) ) )
     return;   // stays an attachment (a click loads it)
   mRequestedParts[specifier] = true;
-  mRequestedBytes += size;
-  mPendingParts.append( specifier );
+  RequestedPart part;
+  part.specifier = specifier;
+  part.size = size;
+  mPendingParts.append( part );
 }
 
 void KMReaderWin::fetchRequestedParts( KMMessage * msg )
 {
-  const QStringList parts = mPendingParts;
+  const QValueList<RequestedPart> parts = mPendingParts;
   mPendingParts.clear();
   KMFolder * folder = msg ? msg->parent() : 0;
   if ( parts.isEmpty() || !folder || folder->folderType() != KMFolderTypeImap )
     return;
+  // The parts a job is fetching already (an earlier visit to this message,
+  // whose jobs went on, or an attachment loaded): not again, but counted
+  // first, the bounds are the message's, not the visit's.
+  QValueList<RequestedPart> toFetch;
+  for ( QValueList<RequestedPart>::ConstIterator it = parts.begin(); it != parts.end(); ++it )
+    if ( folder->isRetrievingPart( msg, (*it).specifier ) ) {
+      ++mRequestedCount;
+      mRequestedBytes += (*it).size;
+    } else
+      toFetch.append( *it );
   // each part arriving updates the message, which notifies the reader
   // (update()): the message is shown again with the image
-  for ( QStringList::ConstIterator it = parts.begin(); it != parts.end(); ++it ) {
-    FolderJob * job = folder->createJob( msg, FolderJob::tGetMessage, 0, *it );
+  for ( QValueList<RequestedPart>::ConstIterator it = toFetch.begin(); it != toFetch.end(); ++it ) {
+    if ( mRequestedCount >= requestedPartsLimit || mRequestedBytes + (*it).size > embeddedBytesLimit )
+      continue;   // stays an attachment (a click loads it)
+    ++mRequestedCount;
+    mRequestedBytes += (*it).size;
+    FolderJob * job = folder->createJob( msg, FolderJob::tGetMessage, 0, (*it).specifier );
     job->setCancellable( false );
     job->start();
   }

@@ -1518,6 +1518,13 @@ KMFolderImap::ignoreJobsForMessage( KMMessage* msg )
   account->ignoreJobsForMessage( msg );
 }
 
+//-------------------------------------------------------------
+bool KMFolderImap::isRetrievingPart( const KMMessage * msg, const QString & specifier ) const
+{
+  KMAcctImap * acct = account();
+  return acct && acct->isRetrievingPart( msg, specifier );
+}
+
 //-----------------------------------------------------------------------------
 void KMFolderImap::slotGetMessagesData(KIO::Job * job, const QByteArray & data)
 {

@@ -112,9 +112,12 @@ public:
   bool embeddingFailed( partNode * node ) const { return mFailedResources.contains( node ); }
   void setEmbeddingFailed( partNode * node ) { mFailedResources[node] = true; }
   /** IMAP load on demand: @p node, an image the HTML shown embeds, is not
-      loaded yet.  It is fetched after the parse (once per message, within
-      the bound of embedded bytes); the message is shown again when it
-      arrives. */
+      loaded yet.  It is fetched after the parse (once per message shown,
+      within the bounds of embedded bytes, number and size of the parts
+      fetched for it); the message is shown again when it arrives.  A part
+      a job of the account is fetching already (an earlier visit to the
+      message, an attachment loaded) is not fetched again, it is counted.
+      A part of unknown size is not fetched. */
   void requestEmbeddedPart( partNode * node );
 
   KMReaderWin( QWidget *parent,
@@ -539,10 +542,15 @@ private:
   QMap<partNode *, bool> mFailedResources;
   void forgetEmbeddedResources();
   // images to fetch (IMAP load on demand), by part specifier: requested for
-  // the message shown, still to request after the parse
+  // the message shown (or still to request after the parse), the ones to
+  // request with their sizes, and the number and size of the requested
+  // ones (also those of an earlier visit to the message still on their
+  // way: requestEmbeddedPart())
+  struct RequestedPart { QString specifier; unsigned int size; };
   QMap<QString, bool> mRequestedParts;
-  QStringList mPendingParts;
-  unsigned int mRequestedBytes;
+  QValueList<RequestedPart> mPendingParts;
+  unsigned int mRequestedCount;
+  Q_UINT64 mRequestedBytes;
   void fetchRequestedParts( KMMessage * msg );
   KMMessage *mMessage;
   // widgets:

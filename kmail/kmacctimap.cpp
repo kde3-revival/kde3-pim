@@ -619,4 +619,18 @@ int KMAcctImap::slotFilterMsg( KMMessage *msg )
   return filterResult;
 }
 
+//-----------------------------------------------------------------------------
+bool KMAcctImap::isRetrievingPart( const KMMessage * msg, const QString & specifier ) const
+{
+  const unsigned long serNum = msg->getMsgSerNum();
+  for ( QPtrListIterator<KMail::ImapJob> it( mJobList ); it.current(); ++it ) {
+    if ( it.current()->partSpecifier() != specifier )
+      continue;
+    const KMMessage * jobMsg = it.current()->msgList().first();
+    if ( jobMsg && ( jobMsg == msg || ( serNum && jobMsg->getMsgSerNum() == serNum ) ) )
+      return true;
+  }
+  return false;
+}
+
 #include "kmacctimap.moc"
