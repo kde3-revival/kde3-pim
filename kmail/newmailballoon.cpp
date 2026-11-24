@@ -553,36 +553,55 @@ bool NewMailBalloon::newMail( const QMap<QString, int> & newInFolder, const QStr
 
 // Whether @p entry is still worth a balloon: one of its messages is
 // still there and unread, or one of the folders of its messages only
-// counted is still there.  The folders that are gone leave it.
+// counted is still there.  The messages and folders that are gone
+// leave it (and its count).
 bool NewMailBalloon::stillNew( Entry & entry ) const
 {
-  QStringList gone;
-  for ( QStringList::ConstIterator it = entry.folderIds.begin(); it != entry.folderIds.end(); ++it ) {
-    if ( !kmkernel->findFolderById( *it ) )
-      gone.append( *it );
-  }
-  for ( QStringList::ConstIterator it = gone.begin(); it != gone.end(); ++it ) {
-    entry.folderIds.remove( *it );
-    QMap<QString, int>::Iterator unknown = entry.unknown.find( *it );
-    if ( unknown != entry.unknown.end() ) {
+  for ( QMap<QString, int>::Iterator it = entry.unknown.begin(); it != entry.unknown.end(); ) {
+    QMap<QString, int>::Iterator unknown = it++;
+    if ( !kmkernel->findFolderById( unknown.key() ) ) {
       entry.count -= unknown.data();
       entry.unknown.remove( unknown );
     }
   }
-  if ( !entry.unknown.isEmpty() )
-    return true;
+  FolderSet folders;
+  bool unread = false;
+  QValueList<Q_UINT32> serNums;
+  QStringList folderIds;
+  QValueList<Item> items;
   for ( QValueList<Q_UINT32>::ConstIterator it = entry.serNums.begin(); it != entry.serNums.end(); ++it ) {
     KMFolder * folder = 0;
     int idx = -1;
-    KMMsgDict::instance()->getLocation( *it, &folder, &idx );
-    if ( !folder || idx < 0 )
+    const KMMsgBase * msgBase = folders.locate( *it, &folder, &idx );
+    if ( !msgBase ) {
+      --entry.count;
       continue;
-    KMFolderOpener opener( folder, "newmailballoon" );
-    const KMMsgBase * msgBase = folder->getMsgBase( idx );
-    if ( msgBase && ( msgBase->isNew() || msgBase->isUnread() ) )
-      return true;
+    }
+    unread = unread || msgBase->isNew() || msgBase->isUnread();
+    serNums.append( *it );
+    if ( !folderIds.contains( folder->idString() ) )
+      folderIds.append( folder->idString() );
+    if ( items.count() < maxItems ) {
+      Item item;
+      item.serNum = *it;
+      item.from = squash( msgBase->fromStrip(), 200 );
+      item.subject = squash( msgBase->subject(), 200 );
+      items.append( item );
+    }
   }
-  return false;
+  for ( QMap<QString, int>::ConstIterator it = entry.unknown.begin(); it != entry.unknown.end(); ++it ) {
+    if ( !folderIds.contains( it.key() ) )
+      folderIds.append( it.key() );
+  }
+  if ( serNums.isEmpty() ) {
+    // (the preview and picture were those of a message that is gone)
+    entry.preview = QString::null;
+    entry.picture = QImage();
+  }
+  entry.serNums = serNums;
+  entry.folderIds = folderIds;
+  entry.items = items;
+  return unread || !entry.unknown.isEmpty();
 }
 
 // The first entry in a balloon at the tray icon (in the corner of the
