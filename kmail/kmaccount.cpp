@@ -278,10 +278,16 @@ if( fileD0.open( IO_WriteOnly ) ) {
                                  QString(strerror(rc)));
         return false;
       }
+      // (before it may be unloaded)
+      kmkernel->acctMgr()->addNewMessage( aMsg->getMsgSerNum() );
       int count = mFolder->count();
       // If count == 1, the message is immediately displayed
       if (count != 1) mFolder->unGetMsg(count - 1);
     }
+  }
+  else {
+    // moved by a filter, where it is now
+    kmkernel->acctMgr()->addNewMessage( aMsg->getMsgSerNum() );
   }
 
   // Count number of new messages for each folder

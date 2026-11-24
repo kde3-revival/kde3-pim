@@ -22,6 +22,7 @@
 
 #include <qobject.h>
 #include <qtimer.h>
+#include <qvaluelist.h>
 #include "kmaccount.h"
 #include "logindsleep.h"
 #include <kdepimmacros.h>
@@ -111,6 +112,18 @@ public slots:
   after checking in multiple accounts. */
   void addToTotalNewMailCount( const QMap<QString, int> & newInFolder );
 
+public:
+  /** A message that arrived in the mail check running now (in its
+      folder, after the filters): @p serNum its serial number.  Ignored
+      without a check running. */
+  void addNewMessage( Q_UINT32 serNum );
+
+  /** The serial numbers of the new messages of the mail check that
+      checkedMail() is emitted for (valid while it is emitted), in the
+      order of arrival; at most maxNewMessages, the first ones. */
+  const QValueList<Q_UINT32> & newMessages() const { return mTotalNewMessages; }
+  enum { maxNewMessages = 1000 };
+
 private slots:
   void checkMailAfterResume();
   void sleepFailsafe();
@@ -144,6 +157,10 @@ private:
 
   // for detailed (per folder) new mail notification
   QMap<QString, int> mTotalNewInFolder;
+  // and the new messages themselves (newMessages()), each once
+  QValueList<Q_UINT32> mTotalNewMessages;
+  QMap<Q_UINT32, bool> mTotalNewMessageSet;
+  void clearTotalNew();
 
   // if a summary should be displayed
   bool mDisplaySummary;
