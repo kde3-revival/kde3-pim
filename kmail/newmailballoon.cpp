@@ -559,7 +559,7 @@ bool NewMailBalloon::newMail( const QMap<QString, int> & newInFolder, const QStr
 // still there and unread, or one of the folders of its messages only
 // counted is still there.  The messages that are gone, or that the
 // filters moved into a folder that does not count (online IMAP filters
-// after the check), or that became spam or ignored, leave it (and its
+// after the check), or that became read, spam or ignored, leave it (and its
 // count), as do the folders that are gone.
 bool NewMailBalloon::stillNew( Entry & entry ) const
 {
@@ -572,7 +572,6 @@ bool NewMailBalloon::stillNew( Entry & entry ) const
     }
   }
   QMap<QString, bool> countsCache;
-  bool unread = false;
   QValueList<Q_UINT32> serNums;
   QStringList folderIds;
   QValueList<Item> items;
@@ -580,12 +579,11 @@ bool NewMailBalloon::stillNew( Entry & entry ) const
     KMFolder * folder = 0;
     int idx = -1;
     const KMMsgBase * msgBase = folders.locate( *it, &folder, &idx );
-    if ( !msgBase || !countsNow( folder->idString(), countsCache ) || msgBase->isSpam() ||
-         msgBase->isIgnored() ) {
+    if ( !msgBase || !countsNow( folder->idString(), countsCache ) ||
+         !( msgBase->isNew() || msgBase->isUnread() ) || msgBase->isSpam() || msgBase->isIgnored() ) {
       --entry.count;
       continue;
     }
-    unread = unread || msgBase->isNew() || msgBase->isUnread();
     serNums.append( *it );
     if ( !folderIds.contains( folder->idString() ) )
       folderIds.append( folder->idString() );
@@ -609,7 +607,7 @@ bool NewMailBalloon::stillNew( Entry & entry ) const
   entry.serNums = serNums;
   entry.folderIds = folderIds;
   entry.items = items;
-  return unread || !entry.unknown.isEmpty();
+  return !entry.serNums.isEmpty() || !entry.unknown.isEmpty();
 }
 
 // Whether one of the messages of @p entry is being fetched (for the
