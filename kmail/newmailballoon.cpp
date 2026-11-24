@@ -720,20 +720,19 @@ void NewMailBalloon::slotAction( int action )
   if ( action == ReadAction ) {
     showMessage( entry );
   } else if ( action == MarkAsReadAction ) {
-    // (each folder open meanwhile: KMSetStatusCommand would not open
-    // those that are closed, a folder the filters moved mail into)
+    // (each folder open meanwhile, the indexes those of the open
+    // folder: KMSetStatusCommand would not open those that are closed,
+    // a folder the filters moved mail into)
+    FolderSet folders;
     QMap<KMFolder*, QValueList<int> > ids;
     for ( QValueList<Q_UINT32>::ConstIterator it = entry.serNums.begin(); it != entry.serNums.end(); ++it ) {
       KMFolder * folder = 0;
       int idx = -1;
-      KMMsgDict::instance()->getLocation( *it, &folder, &idx );
-      if ( folder && idx >= 0 )
+      if ( folders.locate( *it, &folder, &idx ) )
         ids[ folder ].append( idx );
     }
-    for ( QMap<KMFolder*, QValueList<int> >::Iterator it = ids.begin(); it != ids.end(); ++it ) {
-      KMFolderOpener opener( it.key(), "newmailballoon" );
+    for ( QMap<KMFolder*, QValueList<int> >::Iterator it = ids.begin(); it != ids.end(); ++it )
       it.key()->setStatus( it.data(), KMMsgStatusRead );
-    }
   }
 }
 
