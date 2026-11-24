@@ -19,7 +19,10 @@
 #include <qstringlist.h>
 #include <qvaluelist.h>
 
+#include <time.h>
+
 class KBalloon;
+class QTimer;
 class KMFolder;
 class KMMainWidget;
 
@@ -74,7 +77,7 @@ private:
   };
   // What one balloon tells about: the new mail of one check.
   struct Entry {
-    Entry() : count( 0 ) {}
+    Entry() : count( 0 ), waitSince( 0 ) {}
     int count;                  // new messages in all
     QValueList<Item> items;     // the first ones known here (at most maxItems)
     QValueList<Q_UINT32> serNums; // all the ones known here
@@ -82,6 +85,7 @@ private:
     QMap<QString, int> unknown; // folder id: new messages not known here
     QString preview;            // the start of the text (one message)
     QImage picture;             // the sender's (one message)
+    time_t waitSince;           // first held back by a fetch (0: not)
   };
   enum { ReadAction = 1, MarkAsReadAction = 2, IgnoreAction = 3 };
   enum { maxEntries = 5, maxItems = 4 };
@@ -90,7 +94,9 @@ private:
   bool isShownInFront( KMFolder * folder ) const;
   bool countsNow( const QString & folderId, QMap<QString, bool> & cache ) const;
   void collect( const QMap<QString, int> & newInFolder, Entry & entry );
-  bool stillNew( Entry & entry, bool * waiting ) const;
+  bool stillNew( Entry & entry ) const;
+  bool inTransfer( const Entry & entry ) const;
+  void schedule( int msec );
   void closeBalloon( bool byItself = false );
   void next();
   void showMessage( const Entry & entry );
@@ -103,9 +109,9 @@ private:
   // one that goes otherwise (a right or middle click hides it, without
   // a signal) was dismissed.
   const KBalloon * mShown;
-  // How often the first entry waited for its messages being fetched.
-  int mWaits;
-  enum { maxWaits = 40 };
+  // The one pending call of showBalloon() (schedule()).
+  QTimer * mPoll;
+  enum { maxWait = 20 };   // seconds
   Q_UINT32 mPendingSerNum;          // to select once the headers are there
   QGuardedPtr<KMFolder> mPendingFolder;
 };

@@ -54,6 +54,8 @@
 #include <qapplication.h>
 #include <qtimer.h>
 
+#include <time.h>
+
 using namespace KMail;
 
 namespace {
@@ -359,9 +361,10 @@ NewMailBalloon::NewMailBalloon( KMMainWidget * mainWidget, const char * name )
   : QObject( mainWidget, name ),
     mMainWidget( mainWidget ),
     mShown( 0 ),
-    mWaits( 0 ),
+    mPoll( new QTimer( this, "newMailBalloonPoll" ) ),
     mPendingSerNum( 0 )
 {
+  connect( mPoll, SIGNAL( timeout() ), SLOT( showBalloon() ) );
 }
 
 // The balloon is a window of its own: it goes with us.
@@ -548,7 +551,7 @@ bool NewMailBalloon::newMail( const QMap<QString, int> & newInFolder, const QStr
   }
   // (a tray icon that shows only with unread mail is shown first)
   if ( !mBalloon )
-    QTimer::singleShot( 300, this, SLOT( showBalloon() ) );
+    schedule( 300 );
   return true;
 }
 
@@ -557,23 +560,10 @@ bool NewMailBalloon::newMail( const QMap<QString, int> & newInFolder, const QStr
 // counted is still there.  The messages that are gone, or that the
 // filters moved into a folder that does not count (online IMAP filters
 // after the check), or that became spam or ignored, leave it (and its
-// count), as do the folders that are gone.  @p waiting: one of its
-// messages is being fetched (for the filters): ask again later.
-bool NewMailBalloon::stillNew( Entry & entry, bool * waiting ) const
+// count), as do the folders that are gone.
+bool NewMailBalloon::stillNew( Entry & entry ) const
 {
   FolderSet folders;
-  *waiting = false;
-  for ( QValueList<Q_UINT32>::ConstIterator it = entry.serNums.begin(); it != entry.serNums.end(); ++it ) {
-    KMFolder * folder = 0;
-    int idx = -1;
-    const KMMsgBase * msgBase = folders.locate( *it, &folder, &idx );
-    if ( msgBase && msgBase->isMessage() &&
-         static_cast<const KMMessage*>( msgBase )->transferInProgress() ) {
-      *waiting = true;
-      return true;
-    }
-  }
-
   for ( QMap<QString, int>::Iterator it = entry.unknown.begin(); it != entry.unknown.end(); ) {
     QMap<QString, int>::Iterator unknown = it++;
     if ( !kmkernel->findFolderById( unknown.key() ) ) {
@@ -622,6 +612,29 @@ bool NewMailBalloon::stillNew( Entry & entry, bool * waiting ) const
   return unread || !entry.unknown.isEmpty();
 }
 
+// Whether one of the messages of @p entry is being fetched (for the
+// online IMAP filters, which move it after that).
+bool NewMailBalloon::inTransfer( const Entry & entry ) const
+{
+  FolderSet folders;
+  for ( QValueList<Q_UINT32>::ConstIterator it = entry.serNums.begin(); it != entry.serNums.end(); ++it ) {
+    KMFolder * folder = 0;
+    int idx = -1;
+    const KMMsgBase * msgBase = folders.locate( *it, &folder, &idx );
+    if ( msgBase && msgBase->isMessage() &&
+         static_cast<const KMMessage*>( msgBase )->transferInProgress() )
+      return true;
+  }
+  return false;
+}
+
+// showBalloon() in @p msec (one pending call: an earlier one stays)
+void NewMailBalloon::schedule( int msec )
+{
+  if ( !mPoll->isActive() || msec == 0 )
+    mPoll->start( msec, true );
+}
+
 // The first entry in a balloon at the tray icon (in the corner of the
 // screen without one).  Title and text are plain text, what comes from
 // the messages is cut short and kept in its own direction.
@@ -629,17 +642,24 @@ void NewMailBalloon::showBalloon()
 {
   if ( mBalloon )
     return;
-  bool waiting = false;
-  while ( !mEntries.isEmpty() && !stillNew( mEntries.first(), &waiting ) )
+  while ( !mEntries.isEmpty() ) {
+    // A message being fetched holds the first entry back, at most
+    // maxWait seconds: a fetch that does not end does not hold it
+    // longer (its messages are taken as they are then).
+    Entry & first = mEntries.first();
+    if ( inTransfer( first ) ) {
+      const time_t now = time( 0 );
+      if ( !first.waitSince )
+        first.waitSince = now;
+      if ( now - first.waitSince < maxWait ) {
+        schedule( 500 );
+        return;
+      }
+    }
+    if ( stillNew( first ) )
+      break;
     mEntries.remove( mEntries.begin() );
-  // (at most maxWaits times: a fetch that does not end does not hold
-  // the balloon back)
-  if ( waiting && mWaits < maxWaits ) {
-    ++mWaits;
-    QTimer::singleShot( 500, this, SLOT( showBalloon() ) );
-    return;
   }
-  mWaits = 0;
   if ( mEntries.isEmpty() || !GlobalSettings::self()->showNewMailBalloon() )
     return;
   const Entry & entry = mEntries.first();
@@ -733,7 +753,7 @@ void NewMailBalloon::next()
 {
   if ( !mEntries.isEmpty() )
     mEntries.remove( mEntries.begin() );
-  QTimer::singleShot( 0, this, SLOT( showBalloon() ) );
+  schedule( 0 );
 }
 
 void NewMailBalloon::slotBalloonDestroyed()
