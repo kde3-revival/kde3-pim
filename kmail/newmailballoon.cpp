@@ -310,10 +310,11 @@ bool NewMailBalloon::counts( KMFolder * folder ) const
 }
 
 // The main window is in front (active, on this desktop) and shows
-// @p folder: its new mail is seen there.
+// @p folder: its new mail is seen there.  (In Kontact the mail view
+// itself is shown, not another component's.)
 bool NewMailBalloon::isShownInFront( KMFolder * folder ) const
 {
-  if ( mMainWidget->folder() != folder )
+  if ( mMainWidget->folder() != folder || !mMainWidget->isVisible() )
     return false;
   QWidget * window = mMainWidget->topLevelWidget();
   if ( !window->isVisible() || window->isMinimized() || !window->isActiveWindow() )
