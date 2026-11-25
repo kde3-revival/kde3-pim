@@ -2489,6 +2489,34 @@ AppearancePageSystemTrayTab::AppearancePageSystemTrayTab( QWidget * parent,
   mSystemTrayGroup->insert( new QRadioButton( i18n("Only show KMail in system tray if there are unread messages"), mSystemTrayGroup ),
                             GlobalSettings::EnumSystemTrayPolicy::ShowOnUnread );
 
+  // The new mail balloon (at the tray icon, else in the corner of the
+  // screen: not disabled without one)
+  mNewMailBalloonCheck = new QCheckBox( i18n("Show a &balloon for new mail"), this );
+  vlay->addWidget( mNewMailBalloonCheck );
+  QWhatsThis::add( mNewMailBalloonCheck,
+                   GlobalSettings::self()->showNewMailBalloonItem()->whatsThis() );
+  connect( mNewMailBalloonCheck, SIGNAL( stateChanged( int ) ),
+           this, SLOT( slotEmitChanged( void ) ) );
+
+  QHBoxLayout * hlay = new QHBoxLayout( vlay );
+  mNewMailBalloonTimeoutSpin = new KIntSpinBox( 0, 3600, 1, 10, 10, this );
+  mNewMailBalloonTimeoutSpin->setSuffix( i18n(" sec") );
+  mNewMailBalloonTimeoutSpin->setSpecialValueText( i18n("never") );
+  mNewMailBalloonTimeoutLabel = new QLabel( mNewMailBalloonTimeoutSpin,
+                                            i18n("Hide the balloon a&fter:"), this );
+  hlay->addSpacing( 20 );
+  hlay->addWidget( mNewMailBalloonTimeoutLabel );
+  hlay->addWidget( mNewMailBalloonTimeoutSpin );
+  hlay->addStretch( 1 );
+  QWhatsThis::add( mNewMailBalloonTimeoutSpin,
+                   GlobalSettings::self()->newMailBalloonTimeoutItem()->whatsThis() );
+  connect( mNewMailBalloonTimeoutSpin, SIGNAL( valueChanged( int ) ),
+           this, SLOT( slotEmitChanged( void ) ) );
+  connect( mNewMailBalloonCheck, SIGNAL( toggled( bool ) ),
+           mNewMailBalloonTimeoutLabel, SLOT( setEnabled( bool ) ) );
+  connect( mNewMailBalloonCheck, SIGNAL( toggled( bool ) ),
+           mNewMailBalloonTimeoutSpin, SLOT( setEnabled( bool ) ) );
+
   vlay->addStretch( 10 ); // spacer
 }
 
@@ -2498,6 +2526,10 @@ void AppearancePage::SystemTrayTab::doLoadFromGlobalSettings() {
   mRememberVirtualDesktopCheck->setEnabled( mSystemTrayCheck->isChecked() );
   mSystemTrayGroup->setButton( GlobalSettings::self()->systemTrayPolicy() );
   mSystemTrayGroup->setEnabled( mSystemTrayCheck->isChecked() );
+  mNewMailBalloonCheck->setChecked( GlobalSettings::self()->showNewMailBalloon() );
+  mNewMailBalloonTimeoutSpin->setValue( GlobalSettings::self()->newMailBalloonTimeout() );
+  mNewMailBalloonTimeoutSpin->setEnabled( mNewMailBalloonCheck->isChecked() );
+  mNewMailBalloonTimeoutLabel->setEnabled( mNewMailBalloonCheck->isChecked() );
 }
 
 void AppearancePage::SystemTrayTab::installProfile( KConfig * profile ) {
@@ -2512,6 +2544,12 @@ void AppearancePage::SystemTrayTab::installProfile( KConfig * profile ) {
   if ( general.hasKey( "SystemTrayPolicy" ) ) {
     mSystemTrayGroup->setButton( general.readNumEntry( "SystemTrayPolicy" ) );
   }
+  if ( general.hasKey( "ShowNewMailBalloon" ) ) {
+    mNewMailBalloonCheck->setChecked( general.readBoolEntry( "ShowNewMailBalloon" ) );
+  }
+  if ( general.hasKey( "NewMailBalloonTimeout" ) ) {
+    mNewMailBalloonTimeoutSpin->setValue( general.readNumEntry( "NewMailBalloonTimeout" ) );
+  }
   mSystemTrayGroup->setEnabled( mSystemTrayCheck->isChecked() );
 }
 
@@ -2519,6 +2557,8 @@ void AppearancePage::SystemTrayTab::save() {
   GlobalSettings::self()->setSystemTrayEnabled( mSystemTrayCheck->isChecked() );
   GlobalSettings::self()->setSystemTrayRememberVirtualDesktop( mRememberVirtualDesktopCheck->isChecked() );
   GlobalSettings::self()->setSystemTrayPolicy( mSystemTrayGroup->id( mSystemTrayGroup->selected() ) );
+  GlobalSettings::self()->setShowNewMailBalloon( mNewMailBalloonCheck->isChecked() );
+  GlobalSettings::self()->setNewMailBalloonTimeout( mNewMailBalloonTimeoutSpin->value() );
 }
 
 

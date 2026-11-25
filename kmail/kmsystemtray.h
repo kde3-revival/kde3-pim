@@ -51,6 +51,9 @@ public:
   int mode() const;
 
   void hideKMail();
+  /** Shows and raises the main window (on this desktop or the one it
+      was on, as configured). */
+  void showKMail();
 
 private slots:
   void updateNewMessageNotification(KMFolder * folder);
@@ -61,7 +64,6 @@ private slots:
 protected:
   void mousePressEvent(QMouseEvent *);
   bool mainWindowIsOnCurrentDesktop();
-  void showKMail();
   void buildPopupMenu();
   void updateCount();
 

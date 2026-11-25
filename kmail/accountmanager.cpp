@@ -164,7 +164,7 @@ void AccountManager::processNextCheck( bool _newMail )
           mTotalNewMailsArrived );
     emit checkedMail( mNewMailArrived, mInteractive, mTotalNewInFolder );
     mTotalNewMailsArrived = 0;
-    mTotalNewInFolder.clear();
+    clearTotalNew();
     mDisplaySummary = false;
   }
   if ( mAcctTodo.isEmpty() ) return;
@@ -192,7 +192,7 @@ void AccountManager::processNextCheck( bool _newMail )
     KMessageBox::information(0,tmp);
     emit checkedMail( false, mInteractive, mTotalNewInFolder );
     mTotalNewMailsArrived = 0;
-    mTotalNewInFolder.clear();
+    clearTotalNew();
     return;
   }
 
@@ -319,7 +319,7 @@ void AccountManager::checkMail( bool _interactive )
   mDisplaySummary = true;
 
   mTotalNewMailsArrived=0;
-  mTotalNewInFolder.clear();
+  clearTotalNew();
 
   for ( AccountList::Iterator it( mAcctList.begin() ), end( mAcctList.end() ); it != end; ++it ) {
     if ( !(*it)->checkExclude() )
@@ -356,12 +356,36 @@ void AccountManager::intCheckMail(int item, bool _interactive)
 {
   mNewMailArrived = false;
   mTotalNewMailsArrived = 0;
-  mTotalNewInFolder.clear();
+  clearTotalNew();
   if ( KMAccount *acct = mAcctList[ item ] )
     singleCheckMail( acct, _interactive );
   mDisplaySummary = false;
 }
 
+
+//-----------------------------------------------------------------------------
+void AccountManager::clearTotalNew()
+{
+  mTotalNewInFolder.clear();
+  mTotalNewMessages.clear();
+  mTotalNewMessageSet.clear();
+}
+
+//-----------------------------------------------------------------------------
+void AccountManager::addNewMessage( const KMAccount * account, Q_UINT32 serNum, const QString & folderId )
+{
+  if ( !serNum || !account || mTotalNewMessages.count() >= maxNewMessages )
+    return;
+  if ( !mAcctChecking.contains( const_cast<KMAccount*>( account ) ) )
+    return;
+  if ( mTotalNewMessageSet.contains( serNum ) )
+    return;
+  mTotalNewMessageSet.insert( serNum, true );
+  NewMessage message;
+  message.serNum = serNum;
+  message.folderId = folderId;
+  mTotalNewMessages.append( message );
+}
 
 //-----------------------------------------------------------------------------
 void AccountManager::addToTotalNewMailCount( const QMap<QString, int> & newInFolder )

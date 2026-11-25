@@ -115,6 +115,18 @@
         </choices>
         <default>ShowOnUnread</default>
       </entry>
+      <entry name="ShowNewMailBalloon" type="Bool">
+        <label>Show a balloon for new mail</label>
+        <whatsthis>If this option is enabled, new mail is announced in a balloon at the system tray icon (in the corner of the screen without one): the sender, the subject and the start of the text of a new message, or a summary of several ones. It is the passive popup of the event "New Mail Arrived" in Configure Notifications: switched off there, there is no balloon either.</whatsthis>
+        <default>true</default>
+      </entry>
+      <entry name="NewMailBalloonTimeout" type="Int">
+        <label>Seconds the new mail balloon is shown</label>
+        <whatsthis>The balloon goes away after this many seconds (counted while the mouse pointer is not over it); 0: it stays until it is clicked.</whatsthis>
+        <default>10</default>
+        <min>0</min>
+        <max>3600</max>
+      </entry>
       <entry name="CloseDespiteSystemTray" type="Bool">
           <label>Close the application when the mainwindow is closed, even if there is a system tray icon active.</label>
         <default>false</default>

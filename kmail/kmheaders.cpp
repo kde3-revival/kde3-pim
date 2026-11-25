@@ -3465,11 +3465,14 @@ bool KMHeaders::readSortOrder( bool set_selection, bool forceJumpToUnread )
 void KMHeaders::setCurrentItemBySerialNum( unsigned long serialNum )
 {
   // Linear search == slow. Don't overuse this method.
-  // It's currently only used for finding the current item again
-  // after expiry deleted mails (so the index got invalidated).
-  for (int i = 0; i < (int)mItems.size() - 1; ++i) {
+  // It's used for finding the current item again after expiry deleted
+  // mails (so the index got invalidated) and for showing a new message
+  // from the new mail balloon.
+  if ( !mFolder )
+    return;
+  for ( int i = 0; i < (int)mItems.size() && i < mFolder->count(); ++i ) {
     KMMsgBase *mMsgBase = mFolder->getMsgBase( i );
-    if ( mMsgBase->getMsgSerNum() == serialNum ) {
+    if ( mMsgBase && mItems[i] && mMsgBase->getMsgSerNum() == serialNum ) {
       bool unchanged = (currentItem() == mItems[i]);
       setCurrentItem( mItems[i] );
       setSelected( mItems[i], true );
