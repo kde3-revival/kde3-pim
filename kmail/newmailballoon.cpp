@@ -633,6 +633,15 @@ void NewMailBalloon::schedule( int msec )
     mPoll->start( msec, true );
 }
 
+// Seconds of a clock that the time of day does not move (> 0)
+static time_t monotonicSeconds()
+{
+  struct timespec ts;
+  if ( clock_gettime( CLOCK_MONOTONIC, &ts ) != 0 )
+    return time( 0 );
+  return ts.tv_sec + 1;
+}
+
 // The first entry in a balloon at the tray icon (in the corner of the
 // screen without one).  Title and text are plain text, what comes from
 // the messages is cut short and kept in its own direction.
@@ -646,7 +655,7 @@ void NewMailBalloon::showBalloon()
     // longer (its messages are taken as they are then).
     Entry & first = mEntries.first();
     if ( inTransfer( first ) ) {
-      const time_t now = time( 0 );
+      const time_t now = monotonicSeconds();
       if ( !first.waitSince )
         first.waitSince = now;
       if ( now - first.waitSince < maxWait ) {
