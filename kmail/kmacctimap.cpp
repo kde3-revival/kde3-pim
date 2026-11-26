@@ -60,6 +60,7 @@ using KPIM::ProgressManager;
 KMAcctImap::KMAcctImap(AccountManager* aOwner, const QString& aAccountName, uint id):
   KMail::ImapAccountBase(aOwner, aAccountName, id),
   mCountRemainChecks( 0 ),
+  mKillingJobs( 0 ),
   mErrorTimer( 0, "mErrorTimer" )
 {
   mFolder = 0;
@@ -144,9 +145,14 @@ bool KMAcctImap::handleError( int errorCode, const QString &errorMsg, KIO::Job* 
 void KMAcctImap::killAllJobs( bool disconnectSlave )
 {
   ++mKillAllJobsCount;
+  ++mKillingJobs;
   QMap<KIO::Job*, jobData>::Iterator it = mapJobData.begin();
   for ( ; it != mapJobData.end(); ++it)
   {
+    // (the check ends here: no part of it ends later)
+    if ( (*it).parent )
+      disconnect( (*it).parent->storage(), SIGNAL( newMailChecked( KMFolder* ) ),
+                  this, SLOT( postProcessNewMail( KMFolder* ) ) );
     QPtrList<KMMessage> msgList = (*it).msgList;
     QPtrList<KMMessage>::Iterator it2 = msgList.begin();
     for ( ; it2 != msgList.end(); ++it2 ) {
@@ -199,6 +205,7 @@ void KMAcctImap::killAllJobs( bool disconnectSlave )
     KIO::Scheduler::disconnectSlave( slave() );
     mSlave = 0;
   }
+  --mKillingJobs;
 }
 
 //-----------------------------------------------------------------------------
@@ -312,18 +319,9 @@ void KMAcctImap::processNewMail(bool interactive)
             SLOT( slotMailCheckCanceled() ) );
 
   QValueList<QGuardedPtr<KMFolder> >::Iterator it;
-  // first get the current count of unread-messages
+  // (each folder counts its new mail: KMFolderImap::checkNewMail())
   mCountRemainChecks = 0;
   mCountUnread = 0;
-  mUnreadBeforeCheck.clear();
-  for (it = mMailCheckFolders.begin(); it != mMailCheckFolders.end(); ++it)
-  {
-    KMFolder *folder = *it;
-    if (folder && !folder->noContent())
-    {
-      mUnreadBeforeCheck[folder->idString()] = folder->countUnread();
-    }
-  }
   bool gotError = false;
   // then check for new mails
   for (it = mMailCheckFolders.begin(); it != mMailCheckFolders.end(); ++it)
@@ -353,7 +351,9 @@ void KMAcctImap::processNewMail(bool interactive)
           imapFolder->getFolder();
         }
         else {
-          connect(imapFolder, SIGNAL(numUnreadMsgsChanged(KMFolder*)),
+          disconnect(imapFolder, SIGNAL(newMailChecked(KMFolder*)),
+              this, SLOT(postProcessNewMail(KMFolder*)));
+          connect(imapFolder, SIGNAL(newMailChecked(KMFolder*)),
               this, SLOT(postProcessNewMail(KMFolder*)));
           bool ok = imapFolder->processNewMail(interactive);
           if (!ok)
@@ -377,22 +377,35 @@ void KMAcctImap::processNewMail(bool interactive)
   {
     mCountLastUnread = 0; // => mCountUnread - mCountLastUnread == new count
     ImapAccountBase::postProcessNewMail();
-    mUnreadBeforeCheck.clear();
     mCheckingSingleFolder = false;
   }
 }
 
 //-----------------------------------------------------------------------------
-void KMAcctImap::postProcessNewMail(KMFolderImap* folder, bool)
+void KMAcctImap::postProcessNewMail(KMFolderImap* folder, bool success)
 {
   disconnect(folder, SIGNAL(folderComplete(KMFolderImap*, bool)),
       this, SLOT(postProcessNewMail(KMFolderImap*, bool)));
-  postProcessNewMail(static_cast<KMFolder*>(folder->folder()));
+  // listed: its new mail counted, then the rest (not listed, killed:
+  // as before, nothing counted)
+  if ( success && !mKillingJobs )
+    checkNewMail( folder );
+  else
+    postProcessNewMail( static_cast<KMFolder*>( folder->folder() ) );
+}
+
+void KMAcctImap::checkNewMail( KMFolderImap * folder )
+{
+  disconnect( folder, SIGNAL( newMailChecked( KMFolder* ) ),
+              this, SLOT( postProcessNewMail( KMFolder* ) ) );
+  connect( folder, SIGNAL( newMailChecked( KMFolder* ) ),
+           this, SLOT( postProcessNewMail( KMFolder* ) ) );
+  folder->checkNewMail();
 }
 
 void KMAcctImap::postProcessNewMail( KMFolder * folder )
 {
-  disconnect( folder->storage(), SIGNAL(numUnreadMsgsChanged(KMFolder*)),
+  disconnect( folder->storage(), SIGNAL(newMailChecked(KMFolder*)),
               this, SLOT(postProcessNewMail(KMFolder*)) );
 
   if ( mMailCheckProgressItem ) {
@@ -402,11 +415,9 @@ void KMAcctImap::postProcessNewMail( KMFolder * folder )
   }
   mCountRemainChecks--;
 
-  // count the unread messages
+  // its new mail: the messages new on the server (by UID, not seen)
   const QString folderId = folder->idString();
-  int newInFolder = folder->countUnread();
-  if ( mUnreadBeforeCheck.find( folderId ) != mUnreadBeforeCheck.end() )
-    newInFolder -= mUnreadBeforeCheck[folderId];
+  const int newInFolder = static_cast<KMFolderImap*>( folder->storage() )->takeNewMailCount();
   if ( newInFolder > 0 ) {
     addToNewInFolder( folderId, newInFolder );
     mCountUnread += newInFolder;
@@ -493,7 +504,6 @@ void KMAcctImap::postProcessNewMail( KMFolder * folder )
     // then do not display a summary as the normal status message is better
     bool showStatus = ( mCheckingSingleFolder && mCountUnread > 0 ) ? false : true;
     ImapAccountBase::postProcessNewMail( showStatus );
-    mUnreadBeforeCheck.clear();
     mCheckingSingleFolder = false;
   }
 }
@@ -571,12 +581,15 @@ void KMAcctImap::slotResetConnectionError()
   kdDebug(5006) << k_funcinfo << endl;
 }
 
-void KMAcctImap::slotFolderSelected( KMFolderImap* folder, bool )
+void KMAcctImap::slotFolderSelected( KMFolderImap* folder, bool success )
 {
   folder->setSelected( false );
   disconnect( folder, SIGNAL( folderComplete( KMFolderImap*, bool ) ),
 	      this, SLOT( slotFolderSelected( KMFolderImap*, bool) ) );
-  postProcessNewMail( static_cast<KMFolder*>(folder->folder()) );
+  if ( success && !mKillingJobs )
+    checkNewMail( folder );
+  else
+    postProcessNewMail( static_cast<KMFolder*>( folder->folder() ) );
   folder->close( "acctimap" );
 }
 

@@ -81,6 +81,9 @@ KMFolderImap::KMFolderImap(KMFolder* folder, const char* aName)
   mListDirProgressItem = 0;
   mAddMessageProgressItem = 0;
   mReadOnly = false;
+  mNewMailUidNext = 0;
+  mNewMailCount = 0;
+  mStatusUidNext = 0;
 
   connect (this, SIGNAL( folderComplete( KMFolderImap*, bool ) ),
            this, SLOT( slotCompleteMailCheckProgress()) );
@@ -209,6 +212,8 @@ void KMFolderImap::readConfig()
   mReadOnly = config->readBoolEntry("ReadOnly", false);
   mUploadAllFlags = config->readBoolEntry( "UploadAllFlags", true );
   mPermanentFlags = config->readNumEntry( "PermanentFlags", 31 /* default flags */ );
+  mNewMailUidNext = config->readUnsignedLongNumEntry( "NewMailUidNext", 0 );
+  mNewMailUidValidity = config->readEntry( "NewMailUidValidity" );
 
   KMFolderMbox::readConfig();
 }
@@ -225,6 +230,8 @@ void KMFolderImap::writeConfig()
   config->writeEntry("ReadOnly", mReadOnly);
   config->writeEntry( "UploadAllFlags", mUploadAllFlags );
   config->writeEntry( "PermanentFlags", mPermanentFlags );
+  config->writeEntry( "NewMailUidNext", mNewMailUidNext );
+  config->writeEntry( "NewMailUidValidity", mNewMailUidValidity );
   KMFolderMbox::writeConfig();
 }
 
@@ -399,6 +406,7 @@ int KMFolderImap::addMsg(KMMessage* aMsg, int* aIndex_ret)
 
 int KMFolderImap::addMsg(QPtrList<KMMessage>& msgList, QValueList<int>& aIndex_ret)
 {
+  rememberOwnMessages( msgList );
   KMMessage *aMsg = msgList.getFirst();
   KMFolder *msgParent = aMsg->parent();
 
@@ -525,6 +533,7 @@ void KMFolderImap::slotCopyMsgResult( KMail::FolderJob* job )
 //-----------------------------------------------------------------------------
 void KMFolderImap::copyMsg(QPtrList<KMMessage>& msgList)
 {
+  rememberOwnMessages( msgList );
   if ( !account()->hasCapability("uidplus") ) {
     for ( KMMessage *msg = msgList.first(); msg; msg = msgList.next() ) {
       // Remember the status with the MD5 as key
@@ -1642,16 +1651,11 @@ void KMFolderImap::slotGetMessagesData(KIO::Job * job, const QByteArray & data)
             delete md;
           }
         }
-        // (known: its status and serial number were cached; the last UID
-        // before this one: lastUid() reads the last message without one)
-        const bool cached = md != 0;
-        const ulong lastUidBefore = lastUid();
         KMFolderMbox::addMsg(msg, 0);
         // Merge with the flags from the server.
         flagsToStatus((KMMsgBase*)msg, flags, true, mUploadAllFlags ? 31 : mPermanentFlags);
-        // A message new on the server during a mail check: new mail
-        if ( !cached && uid > lastUidBefore && msg->isNew() )
-          kmkernel->acctMgr()->addNewMessage( account(), msg->getMsgSerNum(), folder()->idString() );
+        // (new mail: the messages the count of the check accepts,
+        // slotNewMailFetchResult(), not every message listed)
         // set the correct size
         msg->setMsgSizeServer( msg->headerField("X-Length").toUInt() );
         msg->setUID(uid);
@@ -2123,10 +2127,10 @@ void KMFolderImap::slotProcessNewMail( int errorCode, const QString &errorMsg )
   Q_UNUSED( errorMsg );
   disconnect( account(), SIGNAL( connectionResult(int, const QString&) ),
               this, SLOT( slotProcessNewMail(int, const QString&) ) );
-  if ( !errorCode )
-    processNewMail( false );
-  else
-    emit numUnreadMsgsChanged( folder() );
+  if ( !errorCode && processNewMail( false ) )
+    return;
+  emit numUnreadMsgsChanged( folder() );
+  emit newMailChecked( folder() );
 }
 
 //-----------------------------------------------------------------------------
@@ -2157,10 +2161,7 @@ bool KMFolderImap::processNewMail(bool)
     return true;
   }
   KURL url = account()->getUrl();
-  if (mReadOnly)
-    url.setPath(imapPath() + ";SECTION=UIDNEXT");
-  else
-    url.setPath(imapPath() + ";SECTION=UNSEEN");
+  url.setPath(imapPath() + ";SECTION=UNSEEN UIDNEXT UIDVALIDITY");
 
   mMailCheckProgressItem = ProgressManager::createProgressItem(
               "MailCheckAccount" + account()->name(),
@@ -2184,30 +2185,288 @@ bool KMFolderImap::processNewMail(bool)
 //-----------------------------------------------------------------------------
 void KMFolderImap::slotStatResult(KIO::Job * job)
 {
-  slotCompleteMailCheckProgress();
+  // The new count first: the end of the progress (numUnreadMsgsChanged())
+  // ends this folder's part of the mail check, which counts its new mail.
   ImapAccountBase::JobIterator it = account()->findJob(job);
-  if ( it == account()->jobsEnd() ) return;
-  account()->removeJob(it);
-  if (job->error())
-  {
-    account()->handleJobError( job, i18n("Error while getting folder information.") );
-  } else {
+  // (nothing new: the next UID is that of the last count)
+  bool nothingNew = false;
+  if ( it != account()->jobsEnd() && !job->error() ) {
     KIO::UDSEntry uds = static_cast<KIO::StatJob*>(job)->statResult();
+    long unseen = -1;
+    ulong uidNext = 0;
+    QString uidValidity;
     for (KIO::UDSEntry::ConstIterator it = uds.begin(); it != uds.end(); it++)
     {
       if ((*it).m_uds == KIO::UDS_SIZE)
-      {
-        if (mReadOnly)
-        {
-          mGuessedUnreadMsgs = -1;
-          mGuessedUnreadMsgs = countUnread() + (*it).m_long - lastUid() - 1;
-          if (mGuessedUnreadMsgs < 0) mGuessedUnreadMsgs = 0;
-        } else {
-          mGuessedUnreadMsgs = (*it).m_long;
-        }
+        unseen = (*it).m_long;
+      else if ( (*it).m_uds == KIO::UDS_EXTRA ) {
+        if ( (*it).m_str.startsWith( "X-UidNext: " ) )
+          uidNext = (*it).m_str.mid( 11 ).toULong();
+        else if ( (*it).m_str.startsWith( "X-UidValidity: " ) )
+          uidValidity = (*it).m_str.mid( 15 );
       }
     }
+    if (mReadOnly)
+    {
+      if ( uidNext > 0 ) {
+        mGuessedUnreadMsgs = -1;
+        mGuessedUnreadMsgs = countUnread() + (long)uidNext - (long)lastUid() - 1;
+        if (mGuessedUnreadMsgs < 0) mGuessedUnreadMsgs = 0;
+      }
+    } else if ( unseen >= 0 ) {
+      mGuessedUnreadMsgs = unseen;
+    }
+    nothingNew = uidNext > 0 && !uidValidity.isEmpty() && mNewMailUidNext > 0
+                 && uidValidity == mNewMailUidValidity && uidNext <= mNewMailUidNext;
+    // (for a count without a mark: the next UID, if the SELECT has none)
+    mStatusUidNext = uidNext;
+    mStatusUidValidity = uidValidity;
   }
+  slotCompleteMailCheckProgress();
+  it = account()->findJob(job);
+  const bool known = it != account()->jobsEnd();
+  if ( known )
+    account()->removeJob(it);
+  // the new mail: none, or the messages since the last count (a job
+  // killed with the check, killAllJobs(): nothing); without a mark (of
+  // this UID validity) the STATUS gives it, when it has both
+  if ( !known )
+    return;
+  const bool markFromStatus = !job->error() && mStatusUidNext > 0 && !mStatusUidValidity.isEmpty()
+                              && ( mNewMailUidNext == 0 || mStatusUidValidity != mNewMailUidValidity );
+  if ( markFromStatus ) {
+    setNewMailUidNext( mStatusUidNext, mStatusUidValidity );
+    mStatusUidNext = 0;
+    mStatusUidValidity = QString::null;
+  }
+  if ( nothingNew || markFromStatus || job->error() )
+    emit newMailChecked( folder() );
+  else
+    checkNewMail();
+  if ( known && job->error() )
+    account()->handleJobError( job, i18n("Error while getting folder information.") );
+}
+
+//-----------------------------------------------------------------------------
+void KMFolderImap::checkNewMail()
+{
+  if ( !account() || account()->makeConnection() != ImapAccountBase::Connected ) {
+    emit newMailChecked( folder() );
+    return;
+  }
+  // the messages from the mark on (with their Message-ID, to know the
+  // ones we put here); without a mark only the mailbox's next UID
+  // (without a mark: the last message, for its UID)
+  const ulong from = mNewMailUidNext;
+  KURL url = account()->getUrl();
+  url.setPath( imapPath() + ";UID=" + ( from > 0 ? QString::number( from ) + ":*" : QString( "*:*" ) )
+               + ";SECTION=ENVELOPE;INFO=STRICT" );
+  KIO::SimpleJob *job = KIO::get( url, false, false );
+  KIO::Scheduler::assignJobToSlave( account()->slave(), job );
+  ImapAccountBase::jobData jd( url.url(), folder() );
+  jd.cancellable = true;
+  // (the mark and its UID validity this count starts from)
+  jd.items << QString::number( from ) << mNewMailUidValidity
+           << QString::number( mStatusUidNext ) << mStatusUidValidity;
+  mStatusUidNext = 0;
+  mStatusUidValidity = QString::null;
+  account()->insertJob( job, jd );
+  connect( job, SIGNAL( result(KIO::Job *) ),
+           SLOT( slotNewMailFetchResult(KIO::Job *) ) );
+  connect( job, SIGNAL( data(KIO::Job *, const QByteArray &) ),
+           SLOT( slotSimpleData(KIO::Job *, const QByteArray &) ) );
+}
+
+// The Message-ID of a message as KMail puts it into a folder and as it
+// comes back from the server: the part in angle brackets.
+static QString messageIdKey( const QString & id )
+{
+  const int start = id.find( '<' );
+  const int end = start >= 0 ? id.find( '>', start ) : -1;
+  if ( end > start )
+    return id.mid( start, end - start + 1 );
+  return id.stripWhiteSpace();
+}
+
+//-----------------------------------------------------------------------------
+void KMFolderImap::rememberOwnMessages( QPtrList<KMMessage> & msgList )
+{
+  for ( KMMessage * msg = msgList.first(); msg; msg = msgList.next() ) {
+    const QString key = messageIdKey( msg->msgId() );
+    if ( key.isEmpty() )
+      continue;
+    mOwnMessages[ key ] += 1;
+    mOwnMessageOrder.append( key );
+  }
+  // (at most the last 1000: those of copies that failed go)
+  while ( mOwnMessageOrder.count() > 1000 ) {
+    const QString key = mOwnMessageOrder.first();
+    mOwnMessageOrder.remove( mOwnMessageOrder.begin() );
+    QMap<QString, int>::Iterator own = mOwnMessages.find( key );
+    if ( own != mOwnMessages.end() && --own.data() <= 0 )
+      mOwnMessages.remove( own );
+  }
+}
+
+//-----------------------------------------------------------------------------
+void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
+{
+  ImapAccountBase::JobIterator it = account()->findJob( job );
+  if ( it == account()->jobsEnd() )
+    return;   // (killed with the check, killAllJobs())
+  // (a fetch refused without a mark: the header of the SELECT before it
+  // may still give one)
+  const bool refused = job->error() == KIO::ERR_COULD_NOT_READ;
+  if ( (*it).items.count() == 4 && ( !job->error() || ( refused && (*it).items[0].toULong() == 0 ) ) ) {
+    const ulong from = (*it).items[0].toULong();
+    const QString fromValidity = (*it).items[1];
+    const ulong statusUidNext = (*it).items[2].toULong();
+    const QString statusValidity = (*it).items[3];
+    // the digest: a header with the mailbox's UID validity and next UID
+    // (that of this SELECT: "X-Selected: now"), then a part with
+    // "X-UID", "X-Flags" (none: 0) and the envelope of each message.  (A
+    // part can repeat the one before: kio_imap4 writes one for each
+    // response during the fetch.)
+    const QString data = QString::fromLatin1( (*it).data.data(), (*it).data.size() );
+    const QStringList parts = QStringList::split( "--IMAPDIGEST", data, true );
+    QString validity;
+    ulong uidNext = 0;
+    bool selectedNow = false;
+    int exists = -1;
+    if ( !parts.isEmpty() ) {
+      const QStringList lines = QStringList::split( "\r\n", parts.first() );
+      for ( QStringList::ConstIterator line = lines.begin(); line != lines.end(); ++line ) {
+        if ( ( *line ).startsWith( "X-uidValidity: " ) )
+          validity = ( *line ).mid( 15 ).stripWhiteSpace();
+        else if ( ( *line ).startsWith( "X-UidNext: " ) )
+          uidNext = ( *line ).mid( 11 ).toULong();
+        else if ( *line == "X-Selected: now" )
+          selectedNow = true;
+        else if ( ( *line ).startsWith( "X-Count: " ) )
+          exists = ( *line ).mid( 9 ).toInt();
+      }
+    }
+    const bool counting = !refused && from > 0 && validity == fromValidity;
+    ulong next = counting ? from : 0;
+    // The messages, each once: a UID's parts merged (an unsolicited FETCH
+    // can come before the envelope), the flags of the last one, the
+    // Message-ID of the one that has it.
+    QMap<ulong, int> flagsOf;
+    QMap<ulong, QString> messageIdOf;
+    for ( QStringList::ConstIterator part = parts.begin(); part != parts.end(); ++part ) {
+      if ( part == parts.begin() )
+        continue;
+      ulong uid = 0;
+      int flags = 0;
+      QString messageId;
+      // (unfolded: a long Message-ID goes on the next line)
+      QString text = *part;
+      text.replace( "\r\n ", " " );
+      text.replace( "\r\n\t", " " );
+      const QStringList lines = QStringList::split( "\r\n", text );
+      for ( QStringList::ConstIterator line = lines.begin(); line != lines.end(); ++line ) {
+        if ( ( *line ).startsWith( "X-UID: " ) )
+          uid = ( *line ).mid( 7 ).toULong();
+        else if ( ( *line ).startsWith( "X-Flags: " ) )
+          flags = ( *line ).mid( 9 ).toInt();
+        else if ( ( *line ).lower().startsWith( "message-id:" ) )
+          messageId = messageIdKey( ( *line ).mid( 11 ) );
+      }
+      if ( uid == 0 )
+        continue;
+      flagsOf[ uid ] = flags;
+      if ( !messageId.isEmpty() )
+        messageIdOf[ uid ] = messageId;
+      next = QMAX( next, uid + 1 );
+    }
+    int count = 0;
+    QValueList<ulong> counted;
+    for ( QMap<ulong, int>::ConstIterator m = flagsOf.begin(); counting && m != flagsOf.end(); ++m ) {
+      const ulong uid = m.key();
+      if ( uid < from )
+        continue;   // ("n:*" has the last one at least)
+      // one we put here (moved, copied, uploaded) is no new mail
+      const QString messageId = messageIdOf[ uid ];
+      QMap<QString, int>::Iterator own = mOwnMessages.find( messageId );
+      if ( !messageId.isEmpty() && own != mOwnMessages.end() ) {
+        if ( --own.data() <= 0 )
+          mOwnMessages.remove( own );
+        QStringList::Iterator order = mOwnMessageOrder.find( messageId );
+        if ( order != mOwnMessageOrder.end() )
+          mOwnMessageOrder.remove( order );
+        continue;
+      }
+      if ( m.data() & ( 1 | 8 ) )
+        continue;   // (\Seen, \Deleted)
+      ++count;
+      counted.append( uid );
+    }
+    // The messages themselves for the balloon, those listed here (one
+    // pass from the end: the new ones are the last; the folder opened for
+    // it if it is closed, as INBOX listed for the filters)
+    // (a folder closed and not listed up to them: none here)
+    if ( !counted.isEmpty() && ( folder()->isOpened() || mLastUid >= counted.first() )
+         && open( "newmail" ) == 0 ) {
+      QValueList<ulong>::ConstIterator want = counted.fromLast();
+      QValueList<Q_UINT32> serNums;
+      for ( int i = this->count() - 1; i >= 0 && want != counted.end(); --i ) {
+        const KMMsgBase * msgBase = getMsgBase( i );
+        if ( !msgBase )
+          continue;
+        while ( want != counted.end() && msgBase->UID() < *want )
+          want = ( want == counted.begin() ) ? counted.end() : --want;
+        if ( want != counted.end() && msgBase->UID() == *want )
+          serNums.prepend( KMMsgDict::instance()->getMsgSerNum( folder(), i ) );
+      }
+      close( "newmail" );
+      // (in the order of arrival)
+      for ( QValueList<Q_UINT32>::ConstIterator sn = serNums.begin(); sn != serNums.end(); ++sn )
+        kmkernel->acctMgr()->addNewMessage( account(), *sn, folder()->idString() );
+    }
+    if ( selectedNow )
+      next = QMAX( next, uidNext );
+    if ( !counting ) {
+      // A mark taken now, nothing counted: after the last message, not
+      // below the mailbox's next UID (of this SELECT, of an older one, of
+      // the STATUS before); an empty mailbox without one: from 1 on.
+      next = QMAX( next, uidNext );
+      if ( statusValidity == validity )
+        next = QMAX( next, statusUidNext );
+      // (the header is that of this mailbox, selected now or before for
+      // this fetch: kio_imap4 keeps its count up to date)
+      if ( next == 0 && exists == 0 && flagsOf.isEmpty() )
+        next = 1;
+    }
+    mNewMailCount += count;
+    if ( next > 0 )
+      setNewMailUidNext( next, validity );
+  }
+  emit newMailChecked( folder() );
+  it = account()->findJob( job );
+  if ( it == account()->jobsEnd() ) return;
+  account()->removeJob( it );
+  // (a fetch the server refused keeps the mark: the next check counts
+  // again; that is no error to tell)
+  if ( job->error() && job->error() != KIO::ERR_COULD_NOT_READ )
+    account()->handleJobError( job, i18n( "Error while getting folder information." ) );
+}
+
+//-----------------------------------------------------------------------------
+void KMFolderImap::setNewMailUidNext( ulong uidNext, const QString & uidValidity )
+{
+  if ( uidValidity == mNewMailUidValidity && uidNext <= mNewMailUidNext )
+    return;
+  mNewMailUidNext = uidNext;
+  mNewMailUidValidity = uidValidity;
+  writeConfig();
+}
+
+//-----------------------------------------------------------------------------
+int KMFolderImap::takeNewMailCount()
+{
+  const int count = mNewMailCount;
+  mNewMailCount = 0;
+  return count;
 }
 
 //-----------------------------------------------------------------------------

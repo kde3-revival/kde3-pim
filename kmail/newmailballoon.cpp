@@ -385,10 +385,16 @@ void NewMailBalloon::readConfig()
 
 // The folders whose new mail gets a balloon: those of the tray icon's
 // count (not trash, sent mail, drafts, outbox, templates, search or
-// groupware folders), not those excluded from the new mail check.
+// groupware folders), not those excluded from the new mail check, not
+// those of junk mail (named Spam or Junk, at any level: "INBOX/Spam",
+// "INBOX.Junk").
 bool NewMailBalloon::counts( KMFolder * folder ) const
 {
   if ( !folder || folder->ignoreNewMail() || folder->noContent() )
+    return false;
+  QString name = folder->name().lower();
+  name = name.mid( QMAX( name.findRev( '.' ), name.findRev( '/' ) ) + 1 );
+  if ( name == "spam" || name == "junk" )
     return false;
   if ( folder->folderType() == KMFolderTypeSearch )
     return false;

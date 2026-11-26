@@ -350,6 +350,12 @@ IMAP4Protocol::get (const KURL & _url)
         cacheOutput = true;
       }
 
+      // (STRICT: no message of an earlier command in the first parts)
+      if (aInfo == "STRICT")
+      {
+        delete lastHandled;
+        lastHandled = 0;
+      }
       cmd = sendCommand (imapCommand::clientFetch (aSequence, aSection));
       int res;
       aUpper = aSection.upper();
@@ -402,6 +408,16 @@ IMAP4Protocol::get (const KURL & _url)
         relayEnabled = false;
         cacheOutput = false;
         connectionLost (ERR_CONNECTION_BROKEN);
+        return;
+      }
+      // ";INFO=STRICT": a fetch the server refused (NO, BAD) is an error,
+      // not the end of the data
+      if (aInfo == "STRICT" && cmd && cmd->result () != "OK")
+      {
+        relayEnabled = false;
+        cacheOutput = false;
+        completeQueue.removeRef (cmd);
+        error (ERR_COULD_NOT_READ, _url.prettyURL ());
         return;
       }
       if (aEnum == ITYPE_BOX || aEnum == ITYPE_DIR_AND_BOX)
@@ -1981,6 +1997,27 @@ IMAP4Protocol::stat (const KURL & _url)
       atom.m_long = (aSection == "UIDNEXT") ? getStatus().uidNext()
         : getStatus().unseen();
       entry.append(atom);
+    }
+    else if (aSection == "UNSEEN UIDNEXT UIDVALIDITY")
+    {
+      // the unseen count as the size; the next UID and the UID validity
+      // (both or none) as extra fields "X-UidNext: n", "X-UidValidity: n"
+      if (getStatus().unseenAvailable())
+      {
+        atom.m_uds = UDS_SIZE;
+        atom.m_str = QString::null;
+        atom.m_long = getStatus().unseen();
+        entry.append(atom);
+      }
+      if (getStatus().uidNextAvailable() && getStatus().uidValidityAvailable())
+      {
+        atom.m_uds = UDS_EXTRA;
+        atom.m_long = 0;
+        atom.m_str = "X-UidNext: " + QString::number(getStatus().uidNext());
+        entry.append(atom);
+        atom.m_str = "X-UidValidity: " + QString::number(getStatus().uidValidity());
+        entry.append(atom);
+      }
     }
   } else
   if (aType == ITYPE_BOX || aType == ITYPE_DIR_AND_BOX || aType == ITYPE_MSG ||
