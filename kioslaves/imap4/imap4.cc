@@ -1982,6 +1982,27 @@ IMAP4Protocol::stat (const KURL & _url)
         : getStatus().unseen();
       entry.append(atom);
     }
+    else if (aSection == "UNSEEN UIDNEXT UIDVALIDITY")
+    {
+      // the unseen count as the size; the next UID and the UID validity
+      // (both or none) as extra fields "X-UidNext: n", "X-UidValidity: n"
+      if (getStatus().unseenAvailable())
+      {
+        atom.m_uds = UDS_SIZE;
+        atom.m_str = QString::null;
+        atom.m_long = getStatus().unseen();
+        entry.append(atom);
+      }
+      if (getStatus().uidNextAvailable() && getStatus().uidValidityAvailable())
+      {
+        atom.m_uds = UDS_EXTRA;
+        atom.m_long = 0;
+        atom.m_str = "X-UidNext: " + QString::number(getStatus().uidNext());
+        entry.append(atom);
+        atom.m_str = "X-UidValidity: " + QString::number(getStatus().uidValidity());
+        entry.append(atom);
+      }
+    }
   } else
   if (aType == ITYPE_BOX || aType == ITYPE_DIR_AND_BOX || aType == ITYPE_MSG ||
       aType == ITYPE_ATTACH)
