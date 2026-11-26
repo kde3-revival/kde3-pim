@@ -350,6 +350,12 @@ IMAP4Protocol::get (const KURL & _url)
         cacheOutput = true;
       }
 
+      // (STRICT: no message of an earlier command in the first parts)
+      if (aInfo == "STRICT")
+      {
+        delete lastHandled;
+        lastHandled = 0;
+      }
       cmd = sendCommand (imapCommand::clientFetch (aSequence, aSection));
       int res;
       aUpper = aSection.upper();
@@ -402,6 +408,16 @@ IMAP4Protocol::get (const KURL & _url)
         relayEnabled = false;
         cacheOutput = false;
         connectionLost (ERR_CONNECTION_BROKEN);
+        return;
+      }
+      // ";INFO=STRICT": a fetch the server refused (NO, BAD) is an error,
+      // not the end of the data
+      if (aInfo == "STRICT" && cmd && cmd->result () != "OK")
+      {
+        relayEnabled = false;
+        cacheOutput = false;
+        completeQueue.removeRef (cmd);
+        error (ERR_COULD_NOT_READ, _url.prettyURL ());
         return;
       }
       if (aEnum == ITYPE_BOX || aEnum == ITYPE_DIR_AND_BOX)
