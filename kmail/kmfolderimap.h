@@ -571,6 +571,9 @@ private:
   // order), for the counts to leave out
   ulong mNewMailUidNext;
   QString mNewMailUidValidity;
+  // the next UID and UID validity of the STATUS before a count
+  ulong mStatusUidNext;
+  QString mStatusUidValidity;
   int mNewMailCount;
   QMap<QString, int> mOwnMessages;
   QStringList mOwnMessageOrder;

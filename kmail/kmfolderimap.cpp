@@ -83,6 +83,7 @@ KMFolderImap::KMFolderImap(KMFolder* folder, const char* aName)
   mReadOnly = false;
   mNewMailUidNext = 0;
   mNewMailCount = 0;
+  mStatusUidNext = 0;
 
   connect (this, SIGNAL( folderComplete( KMFolderImap*, bool ) ),
            this, SLOT( slotCompleteMailCheckProgress()) );
@@ -1650,16 +1651,11 @@ void KMFolderImap::slotGetMessagesData(KIO::Job * job, const QByteArray & data)
             delete md;
           }
         }
-        // (known: its status and serial number were cached; the last UID
-        // before this one: lastUid() reads the last message without one)
-        const bool cached = md != 0;
-        const ulong lastUidBefore = lastUid();
         KMFolderMbox::addMsg(msg, 0);
         // Merge with the flags from the server.
         flagsToStatus((KMMsgBase*)msg, flags, true, mUploadAllFlags ? 31 : mPermanentFlags);
-        // A message new on the server during a mail check: new mail
-        if ( !cached && uid > lastUidBefore && msg->isNew() )
-          kmkernel->acctMgr()->addNewMessage( account(), msg->getMsgSerNum(), folder()->idString() );
+        // (new mail: the messages the count of the check accepts,
+        // slotNewMailFetchResult(), not every message listed)
         // set the correct size
         msg->setMsgSizeServer( msg->headerField("X-Length").toUInt() );
         msg->setUID(uid);
@@ -2222,6 +2218,9 @@ void KMFolderImap::slotStatResult(KIO::Job * job)
     }
     nothingNew = uidNext > 0 && !uidValidity.isEmpty() && mNewMailUidNext > 0
                  && uidValidity == mNewMailUidValidity && uidNext <= mNewMailUidNext;
+    // (for a count without a mark: the next UID, if the SELECT has none)
+    mStatusUidNext = uidNext;
+    mStatusUidValidity = uidValidity;
   }
   slotCompleteMailCheckProgress();
   it = account()->findJob(job);
@@ -2229,10 +2228,18 @@ void KMFolderImap::slotStatResult(KIO::Job * job)
   if ( known )
     account()->removeJob(it);
   // the new mail: none, or the messages since the last count (a job
-  // killed with the check, killAllJobs(): nothing)
+  // killed with the check, killAllJobs(): nothing); without a mark (of
+  // this UID validity) the STATUS gives it, when it has both
   if ( !known )
     return;
-  if ( nothingNew || job->error() )
+  const bool markFromStatus = !job->error() && mStatusUidNext > 0 && !mStatusUidValidity.isEmpty()
+                              && ( mNewMailUidNext == 0 || mStatusUidValidity != mNewMailUidValidity );
+  if ( markFromStatus ) {
+    setNewMailUidNext( mStatusUidNext, mStatusUidValidity );
+    mStatusUidNext = 0;
+    mStatusUidValidity = QString::null;
+  }
+  if ( nothingNew || markFromStatus || job->error() )
     emit newMailChecked( folder() );
   else
     checkNewMail();
@@ -2249,16 +2256,20 @@ void KMFolderImap::checkNewMail()
   }
   // the messages from the mark on (with their Message-ID, to know the
   // ones we put here); without a mark only the mailbox's next UID
+  // (without a mark: the last message, for its UID)
   const ulong from = mNewMailUidNext;
   KURL url = account()->getUrl();
-  url.setPath( imapPath() + ";UID=" + ( from > 0 ? QString::number( from ) + ":*" : QString( "0:0" ) )
+  url.setPath( imapPath() + ";UID=" + ( from > 0 ? QString::number( from ) + ":*" : QString( "*:*" ) )
                + ";SECTION=ENVELOPE;INFO=STRICT" );
   KIO::SimpleJob *job = KIO::get( url, false, false );
   KIO::Scheduler::assignJobToSlave( account()->slave(), job );
   ImapAccountBase::jobData jd( url.url(), folder() );
   jd.cancellable = true;
   // (the mark and its UID validity this count starts from)
-  jd.items << QString::number( from ) << mNewMailUidValidity;
+  jd.items << QString::number( from ) << mNewMailUidValidity
+           << QString::number( mStatusUidNext ) << mStatusUidValidity;
+  mStatusUidNext = 0;
+  mStatusUidValidity = QString::null;
   account()->insertJob( job, jd );
   connect( job, SIGNAL( result(KIO::Job *) ),
            SLOT( slotNewMailFetchResult(KIO::Job *) ) );
@@ -2303,9 +2314,14 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
   ImapAccountBase::JobIterator it = account()->findJob( job );
   if ( it == account()->jobsEnd() )
     return;   // (killed with the check, killAllJobs())
-  if ( it != account()->jobsEnd() && !job->error() && (*it).items.count() == 2 ) {
+  // (a fetch refused without a mark: the header of the SELECT before it
+  // may still give one)
+  const bool refused = job->error() == KIO::ERR_COULD_NOT_READ;
+  if ( (*it).items.count() == 4 && ( !job->error() || ( refused && (*it).items[0].toULong() == 0 ) ) ) {
     const ulong from = (*it).items[0].toULong();
     const QString fromValidity = (*it).items[1];
+    const ulong statusUidNext = (*it).items[2].toULong();
+    const QString statusValidity = (*it).items[3];
     // the digest: a header with the mailbox's UID validity and next UID
     // (that of this SELECT: "X-Selected: now"), then a part with
     // "X-UID", "X-Flags" (none: 0) and the envelope of each message.  (A
@@ -2316,6 +2332,7 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
     QString validity;
     ulong uidNext = 0;
     bool selectedNow = false;
+    int exists = -1;
     if ( !parts.isEmpty() ) {
       const QStringList lines = QStringList::split( "\r\n", parts.first() );
       for ( QStringList::ConstIterator line = lines.begin(); line != lines.end(); ++line ) {
@@ -2325,12 +2342,17 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
           uidNext = ( *line ).mid( 11 ).toULong();
         else if ( *line == "X-Selected: now" )
           selectedNow = true;
+        else if ( ( *line ).startsWith( "X-Count: " ) )
+          exists = ( *line ).mid( 9 ).toInt();
       }
     }
-    const bool counting = from > 0 && validity == fromValidity;
+    const bool counting = !refused && from > 0 && validity == fromValidity;
     ulong next = counting ? from : 0;
-    QMap<ulong, bool> seen;
-    int count = 0;
+    // The messages, each once: a UID's parts merged (an unsolicited FETCH
+    // can come before the envelope), the flags of the last one, the
+    // Message-ID of the one that has it.
+    QMap<ulong, int> flagsOf;
+    QMap<ulong, QString> messageIdOf;
     for ( QStringList::ConstIterator part = parts.begin(); part != parts.end(); ++part ) {
       if ( part == parts.begin() )
         continue;
@@ -2350,13 +2372,21 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
         else if ( ( *line ).lower().startsWith( "message-id:" ) )
           messageId = messageIdKey( ( *line ).mid( 11 ) );
       }
-      if ( uid == 0 || seen.contains( uid ) )
+      if ( uid == 0 )
         continue;
-      seen.insert( uid, true );
+      flagsOf[ uid ] = flags;
+      if ( !messageId.isEmpty() )
+        messageIdOf[ uid ] = messageId;
       next = QMAX( next, uid + 1 );
-      if ( !counting || uid < from )
+    }
+    int count = 0;
+    QValueList<ulong> counted;
+    for ( QMap<ulong, int>::ConstIterator m = flagsOf.begin(); counting && m != flagsOf.end(); ++m ) {
+      const ulong uid = m.key();
+      if ( uid < from )
         continue;   // ("n:*" has the last one at least)
       // one we put here (moved, copied, uploaded) is no new mail
+      const QString messageId = messageIdOf[ uid ];
       QMap<QString, int>::Iterator own = mOwnMessages.find( messageId );
       if ( !messageId.isEmpty() && own != mOwnMessages.end() ) {
         if ( --own.data() <= 0 )
@@ -2366,30 +2396,44 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
           mOwnMessageOrder.remove( order );
         continue;
       }
-      if ( flags & ( 1 | 8 ) )
+      if ( m.data() & ( 1 | 8 ) )
         continue;   // (\Seen, \Deleted)
       ++count;
-      // (the message itself for the balloon, when it is here: listed)
-      if ( folder()->isOpened() ) {
-        for ( int i = this->count() - 1; i >= 0; --i ) {
-          const KMMsgBase * msgBase = getMsgBase( i );
-          if ( !msgBase || msgBase->UID() < uid )
-            break;
-          if ( msgBase->UID() == uid ) {
-            kmkernel->acctMgr()->addNewMessage( account(), KMMsgDict::instance()->getMsgSerNum( folder(), i ),
-                                                folder()->idString() );
-            break;
-          }
-        }
+      counted.append( uid );
+    }
+    // The messages themselves for the balloon, those listed here (one
+    // pass from the end: the new ones are the last; the folder opened for
+    // it if it is closed, as INBOX listed for the filters)
+    // (a folder closed and not listed up to them: none here)
+    if ( !counted.isEmpty() && ( folder()->isOpened() || mLastUid >= counted.first() )
+         && open( "newmail" ) == 0 ) {
+      QValueList<ulong>::ConstIterator want = counted.fromLast();
+      QValueList<Q_UINT32> serNums;
+      for ( int i = this->count() - 1; i >= 0 && want != counted.end(); --i ) {
+        const KMMsgBase * msgBase = getMsgBase( i );
+        if ( !msgBase )
+          continue;
+        while ( want != counted.end() && msgBase->UID() < *want )
+          want = ( want == counted.begin() ) ? counted.end() : --want;
+        if ( want != counted.end() && msgBase->UID() == *want )
+          serNums.prepend( KMMsgDict::instance()->getMsgSerNum( folder(), i ) );
       }
+      close( "newmail" );
+      // (in the order of arrival)
+      for ( QValueList<Q_UINT32>::ConstIterator sn = serNums.begin(); sn != serNums.end(); ++sn )
+        kmkernel->acctMgr()->addNewMessage( account(), *sn, folder()->idString() );
     }
     if ( selectedNow )
       next = QMAX( next, uidNext );
-    else if ( !counting ) {
-      // a mark taken now, not counted: not below what is here already
+    if ( !counting ) {
+      // A mark taken now, nothing counted: after the last message, not
+      // below the mailbox's next UID (of this SELECT, of an older one, of
+      // the STATUS before); an empty mailbox without one: from 1 on.
       next = QMAX( next, uidNext );
-      if ( validity == mUidValidity )
-        next = QMAX( next, lastUid() + 1 );
+      if ( statusValidity == validity )
+        next = QMAX( next, statusUidNext );
+      if ( next == 0 && exists == 0 && selectedNow )
+        next = 1;
     }
     mNewMailCount += count;
     if ( next > 0 )
