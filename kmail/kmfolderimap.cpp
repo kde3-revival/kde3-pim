@@ -2184,14 +2184,10 @@ bool KMFolderImap::processNewMail(bool)
 //-----------------------------------------------------------------------------
 void KMFolderImap::slotStatResult(KIO::Job * job)
 {
-  slotCompleteMailCheckProgress();
+  // The new count first: the end of the progress (numUnreadMsgsChanged())
+  // ends this folder's part of the mail check, which counts its new mail.
   ImapAccountBase::JobIterator it = account()->findJob(job);
-  if ( it == account()->jobsEnd() ) return;
-  account()->removeJob(it);
-  if (job->error())
-  {
-    account()->handleJobError( job, i18n("Error while getting folder information.") );
-  } else {
+  if ( it != account()->jobsEnd() && !job->error() ) {
     KIO::UDSEntry uds = static_cast<KIO::StatJob*>(job)->statResult();
     for (KIO::UDSEntry::ConstIterator it = uds.begin(); it != uds.end(); it++)
     {
@@ -2208,6 +2204,12 @@ void KMFolderImap::slotStatResult(KIO::Job * job)
       }
     }
   }
+  slotCompleteMailCheckProgress();
+  it = account()->findJob(job);
+  if ( it == account()->jobsEnd() ) return;
+  account()->removeJob(it);
+  if (job->error())
+    account()->handleJobError( job, i18n("Error while getting folder information.") );
 }
 
 //-----------------------------------------------------------------------------
