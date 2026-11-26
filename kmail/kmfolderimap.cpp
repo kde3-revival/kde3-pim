@@ -2432,7 +2432,9 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
       next = QMAX( next, uidNext );
       if ( statusValidity == validity )
         next = QMAX( next, statusUidNext );
-      if ( next == 0 && exists == 0 && selectedNow )
+      // (the header is that of this mailbox, selected now or before for
+      // this fetch: kio_imap4 keeps its count up to date)
+      if ( next == 0 && exists == 0 && flagsOf.isEmpty() )
         next = 1;
     }
     mNewMailCount += count;
