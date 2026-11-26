@@ -273,6 +273,13 @@ public:
    * If this folder should be included in new-mail-check
    */
   bool includeInMailCheck() { return mCheckMail; }
+
+  /** Counts the new mail on the server: the messages since the last
+      count that are not seen, not deleted and not ones we put here
+      (moved, copied, uploaded).  newMailChecked() when done. */
+  void checkNewMail();
+  /** The new mail counted since the last call, none from now on. */
+  int takeNewMailCount();
   void setIncludeInMailCheck( bool check );
 
   /** Inherited */
@@ -327,6 +334,9 @@ public:
 
 signals:
   void folderComplete(KMFolderImap *folder, bool success);
+
+  /** Its part of a mail check is done: the new mail counted (or not). */
+  void newMailChecked( KMFolder * folder );
 
   /**
    * Emitted, when the account is deleted
@@ -443,6 +453,12 @@ protected:
 
   void finishMailCheck( const char *func, imapState state );
 
+  /** The messages put into this folder (by their Message-ID): no new
+      mail when they come back from the server. */
+  void rememberOwnMessages( QPtrList<KMMessage> & msgList );
+  /** The mark: new mail from @p uidNext on (with @p uidValidity). */
+  void setNewMailUidNext( ulong uidNext, const QString & uidValidity );
+
 protected slots:
 
   /**
@@ -483,6 +499,7 @@ protected slots:
    * Update the number of unseen messages
    */
   void slotStatResult(KIO::Job *job);
+  void slotNewMailFetchResult( KIO::Job * job );
 
   /**
    * notify the progress item that the mail check for this folder is
@@ -547,6 +564,16 @@ private:
   // PERMANENTFLAGS part of SELECT response, needed to determine if custom flags can be
   // stored on the server
   int mPermanentFlags;
+
+  // New mail: the mark, the next UID of the last count, and its UID
+  // validity (0: none yet); the new mail counted since takeNewMailCount();
+  // the Message-IDs of the messages put here (how many of each, the
+  // order), for the counts to leave out
+  ulong mNewMailUidNext;
+  QString mNewMailUidValidity;
+  int mNewMailCount;
+  QMap<QString, int> mOwnMessages;
+  QStringList mOwnMessageOrder;
 };
 
 #endif // kmfolderimap_h

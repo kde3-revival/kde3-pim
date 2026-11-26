@@ -124,8 +124,8 @@ protected slots:
   /** new-mail-notification for the current folder (is called via folderComplete) */
   void postProcessNewMail(KMFolderImap*, bool);
   /**
-   * new-mail-notification for not-selected folders (is called via
-   * numUnreadMsgsChanged)
+   * new-mail-notification for a folder whose new mail is counted (is
+   * called via KMFolderImap::newMailChecked)
    */
   void postProcessNewMail( KMFolder * f );
 
@@ -147,7 +147,12 @@ protected slots:
   int slotFilterMsg( KMMessage* );
 
 private:
+  /** Counts the new mail of @p folder, then postProcessNewMail(). */
+  void checkNewMail( KMFolderImap * folder );
+
   int mCountRemainChecks;
+  // killAllJobs() running (how deep): no new mail counted then
+  int mKillingJobs;
   /** used to reset connection errors */
   QTimer mErrorTimer;
   QValueList<Q_UINT32> mFilterSerNums;
