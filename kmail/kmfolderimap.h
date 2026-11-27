@@ -284,9 +284,12 @@ public:
   /** The listings of the messages started so far (each gets the next
       number). */
   ulong listingsStarted() const { return mListingsStarted; }
-  /** The last listing that ended complete: its number (0: none yet),
-      the UID validity and the next UID (0: unknown) of its SELECT.  It
-      has every message of a UID below that next UID that was there. */
+  /** The last listing that ended complete (no error, an index of every
+      message since a listing of all, as many messages as the SELECT
+      had): its number (0: none yet), the UID validity and a next UID of
+      its mailbox (0: unknown; that of its SELECT, or of an earlier one,
+      lower).  The folder has every message of a UID below it that was
+      there then. */
   ulong listedNumber() const { return mListedNumber; }
   QString listedUidValidity() const { return mListedUidValidity; }
   ulong listedUidNext() const { return mListedUidNext; }
@@ -593,6 +596,13 @@ private:
   ulong mListedNumber;
   QString mListedUidValidity;
   ulong mListedUidNext;
+  // the messages of the running listing's SELECT (-1: unknown); whether
+  // the index has every message of the server up to the last listing
+  // (a listing of all that ended, and only listings that ended since),
+  // and whether the running listing makes it so
+  int mListingExists;
+  bool mIndexComplete;
+  bool mListingFromComplete;
   QMap<QString, int> mOwnMessages;
   QStringList mOwnMessageOrder;
 };

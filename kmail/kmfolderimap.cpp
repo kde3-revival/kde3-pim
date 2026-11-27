@@ -88,6 +88,9 @@ KMFolderImap::KMFolderImap(KMFolder* folder, const char* aName)
   mListingUidNext = 0;
   mListedNumber = 0;
   mListedUidNext = 0;
+  mListingExists = -1;
+  mIndexComplete = false;
+  mListingFromComplete = false;
 
   connect (this, SIGNAL( folderComplete( KMFolderImap*, bool ) ),
            this, SLOT( slotCompleteMailCheckProgress()) );
@@ -1171,10 +1174,20 @@ void KMFolderImap::slotCheckValidityResult(KIO::Job * job)
       uidNext = cstr.mid( a + 11, b - a - 11 ).toULong( &ok );
       if ( !ok ) uidNext = 0;
     }
-    // (a listing of the messages starts: its SELECT)
+    // A listing of the messages starts: its SELECT, the next UID of
+    // this one or (the mailbox selected before) of the one before,
+    // lower: a bound of the UIDs it lists as good.  The index is not
+    // complete until it ends (killed, failed: not).
     ++mListingsStarted;
     mListingUidValidity = uidv;
     mListingUidNext = uidNext;
+    if ( !mListingUidNext && a >= 0 && (b - a - 11) >= 0 ) {
+      mListingUidNext = cstr.mid( a + 11, b - a - 11 ).toULong( &ok );
+      if ( !ok ) mListingUidNext = 0;
+    }
+    mListingExists = exists;
+    mListingFromComplete = mIndexComplete;
+    mIndexComplete = false;
     QString startUid;
     if (uidValidity() != uidv)
     {
@@ -1270,6 +1283,8 @@ void KMFolderImap::reallyGetFolder(const QString &startUid)
   quiet(true);
   if (startUid.isEmpty())
   {
+    // (all the messages: the index complete when it ends)
+    mListingFromComplete = true;
     if ( mMailCheckProgressItem )
       mMailCheckProgressItem->setStatus( i18n("Retrieving message status") );
     url.setPath(imapPath() + ";SECTION=UID FLAGS");
@@ -2427,7 +2442,10 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
     // it if it is closed, as INBOX listed for the filters)
     // (a folder closed and not listed up to them: none here)
     QMap<ulong, Q_UINT32> serNumOf;
-    if ( !counted.isEmpty() && ( folder()->isOpened() || mLastUid >= counted.first() )
+    // (only an index of this UID validity: a UID of another one is
+    // another message)
+    if ( !counted.isEmpty() && uidValidity() == validity
+         && ( folder()->isOpened() || mLastUid >= counted.first() )
          && open( "newmail" ) == 0 ) {
       QValueList<ulong>::ConstIterator want = counted.fromLast();
       for ( int i = this->count() - 1; i >= 0 && want != counted.end(); --i ) {
@@ -2780,12 +2798,22 @@ void KMFolderImap::finishMailCheck( const char *dbg, imapState state )
   quiet( false );
   mContentState = state;
   if ( state == imapFinished && !mListingUidValidity.isEmpty() ) {
-    mListedNumber = mListingsStarted;
-    mListedUidValidity = mListingUidValidity;
-    mListedUidNext = mListingUidNext;
+    mIndexComplete = mListingFromComplete;
+    // (a fetch refused, a message not taken: not as many as the
+    // SELECT had, the listing proves nothing)
+    if ( mIndexComplete && ( mListingExists < 0 || mListingExists == count() ) ) {
+      // (a bound of the same UID validity is not lowered)
+      if ( mListedUidValidity == mListingUidValidity )
+        mListedUidNext = QMAX( mListedUidNext, mListingUidNext );
+      else
+        mListedUidNext = mListingUidNext;
+      mListedNumber = mListingsStarted;
+      mListedUidValidity = mListingUidValidity;
+    }
   }
   mListingUidValidity = QString::null;
   mListingUidNext = 0;
+  mListingExists = -1;
   emit folderComplete( this, mContentState == imapFinished );
   close(dbg);
 }
