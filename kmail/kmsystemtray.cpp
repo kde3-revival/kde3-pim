@@ -46,6 +46,8 @@ using KMail::AccountManager;
 #include <math.h>
 #include <assert.h>
 
+#include <X11/Xlib.h>
+
 /**
  * Construct a KSystemTray icon to be displayed when new mail
  * has arrived in a non-system folder.  The KMSystemTray listens
@@ -60,6 +62,8 @@ using KMail::AccountManager;
 KMSystemTray::KMSystemTray(QWidget *parent, const char *name)
   : KSystemTray( parent, name ),
     mParentVisible( true ),
+    mParentNeverShown( false ),
+    mDockTimer( 0 ),
     mPosOfMainWin( 0, 0 ),
     mDesktopOfMainWin( 0 ),
     mMode( GlobalSettings::EnumSystemTrayPolicy::ShowOnUnread ),
@@ -130,6 +134,12 @@ void KMSystemTray::buildPopupMenu()
     action->plug( mPopupMenu );
   if ( ( action = mainWidget->action("kmail_configure_kmail") ) )
     action->plug( mPopupMenu );
+  // the autostart entry starts the KMail application, not Kontact
+  if ( !kmkernel->xmlGuiInstance() ) {
+    const int id = mPopupMenu->insertItem( i18n("Start KMail at Login"),
+                                           this, SLOT( toggleAutostart() ) );
+    mPopupMenu->setItemChecked( id, KMKernel::startAtLogin() );
+  }
   mPopupMenu->insertSeparator();
 
   KMainWindow *mainWin = ::qt_cast<KMainWindow*>(kmkernel->getKMMainWidget()->topLevelWidget());
@@ -145,6 +155,11 @@ KMSystemTray::~KMSystemTray()
 
   delete mPopupMenu;
   mPopupMenu = 0;
+}
+
+void KMSystemTray::toggleAutostart()
+{
+  KMKernel::setStartAtLogin( !KMKernel::startAtLogin() );
 }
 
 void KMSystemTray::setMode(int newMode)
@@ -396,7 +411,15 @@ void KMSystemTray::showKMail()
     return;
   QWidget *mainWin = kmkernel->getKMMainWidget()->topLevelWidget();
   assert(mainWin);
-  if(mainWin)
+  if ( mainWin && mParentNeverShown ) {
+    // started in the tray: no desktop or position to restore, the window
+    // manager places the window on the current desktop
+    mParentNeverShown = false;
+    mainWin->show();
+    KWin::activateWindow( mainWin->winId() );
+    mParentVisible = true;
+  }
+  else if(mainWin)
   {
     KWin::WindowInfo cur =  KWin::windowInfo( mainWin->winId(), NET::WMDesktop );
     if ( cur.valid() ) mDesktopOfMainWin = cur.desktop();
@@ -425,6 +448,74 @@ void KMSystemTray::showKMail()
   foldersChanged();
 }
 
+void KMSystemTray::setMainWindowNotShown()
+{
+  mParentVisible = false;
+  mParentNeverShown = true;
+  // the panel may come up after KMail: whether the icon is in a system
+  // tray is decided after a while, unless the window is shown or hidden
+  // before (by the icon, kmail started again, ...): the user decides then
+  KMMainWidget * mainWidget = kmkernel->getKMMainWidget();
+  QWidget * mainWin = mainWidget ? mainWidget->topLevelWidget() : 0;
+  if ( !mainWin )
+    return;
+  if ( mHiddenMainWin )
+    mHiddenMainWin->removeEventFilter( this );
+  mHiddenMainWin = mainWin;
+  mainWin->installEventFilter( this );
+  if ( !mDockTimer ) {
+    mDockTimer = new QTimer( this, "docktimer" );
+    connect( mDockTimer, SIGNAL( timeout() ), SLOT( checkDocked() ) );
+  }
+  mDockTimer->start( 15000, true );
+}
+
+void KMSystemTray::cancelDockCheck()
+{
+  if ( mDockTimer )
+    mDockTimer->stop();
+  if ( mHiddenMainWin )
+    mHiddenMainWin->removeEventFilter( this );
+  mHiddenMainWin = 0;
+}
+
+bool KMSystemTray::eventFilter( QObject * o, QEvent * e )
+{
+  if ( o == mHiddenMainWin &&
+       ( e->type() == QEvent::Show || e->type() == QEvent::Hide ) )
+    cancelDockCheck();
+  return KSystemTray::eventFilter( o, e );
+}
+
+void KMSystemTray::checkDocked()
+{
+  // still never shown (see eventFilter())
+  const bool show = mHiddenMainWin && !isDocked();
+  cancelDockCheck();
+  if ( show ) {
+    kdDebug(5006) << "No system tray took the icon: showing the main window" << endl;
+    showKMail();
+  }
+}
+
+bool KMSystemTray::isDocked() const
+{
+  if ( !isVisible() )
+    return false;
+  QCString selection;
+  selection.sprintf( "_NET_SYSTEM_TRAY_S%d", qt_xscreen() );
+  if ( XGetSelectionOwner( qt_xdisplay(), XInternAtom( qt_xdisplay(), selection.data(), False ) ) == None )
+    return false;
+  Window root = 0, parent = 0;
+  Window * children = 0;
+  unsigned int count = 0;
+  if ( !XQueryTree( qt_xdisplay(), winId(), &root, &parent, &children, &count ) )
+    return false;
+  if ( children )
+    XFree( children );
+  return parent != 0 && parent != root;
+}
+
 void KMSystemTray::hideKMail()
 {
   if (!kmkernel->getKMMainWidget())
@@ -436,6 +527,8 @@ void KMSystemTray::hideKMail()
     mDesktopOfMainWin = KWin::windowInfo( mainWin->winId(),
                                           NET::WMDesktop ).desktop();
     mPosOfMainWin = mainWin->pos();
+    if ( !mainWin->isHidden() ) // shown meanwhile, not by the tray
+      mParentNeverShown = false;
     // only hidden, not iconified first: an iconified window comes back
     // with the unminimize animation, the tray should show it at once
     mainWin->hide();

@@ -13,8 +13,12 @@
 #include "broadcaststatus.h"
 #include "accountmanager.h"
 #include "kmtransport.h"
+#include "kmsystemtray.h"
+#include "kmkernel.h"
+#include "globalsettings.h"
 
 #include <kapplication.h>
+#include <qdesktopwidget.h>
 #include <klocale.h>
 #include <kedittoolbar.h>
 #include <kconfig.h>
@@ -27,7 +31,8 @@
 
 KMMainWin::KMMainWin(QWidget *)
     : KMainWindow( 0, "kmail-mainwindow#" ),
-      mReallyClose( false )
+      mReallyClose( false ),
+      mRestoredInTray( false )
 {
   // Set this to be the group leader for all subdialogs - this means
   // modal subdialogs will only affect this dialog, not the other windows
@@ -216,7 +221,39 @@ bool KMMainWin::queryClose()
 
 void KMMainWin::slotShowTipOnStart()
 {
+  // not when started in the tray
+  if ( isHidden() )
+    return;
   KTipDialog::showTip( this );
+}
+
+bool KMMainWin::stayInTray()
+{
+  // the icon shows the window of the first main widget only
+  if ( kmkernel->getKMMainWidget() != mKMMainWidget )
+    return false;
+  KMSystemTray *tray = mKMMainWidget->systray();
+  if ( !tray || tray->mode() != GlobalSettings::EnumSystemTrayPolicy::ShowAlways )
+    return false;
+  // the size show() would give the new window now (Qt's natural size):
+  // when the icon shows it later, the layout asks for another one
+  if ( !testWState( WState_Resized ) ) {
+    const QRect screen = QApplication::desktop()->screenGeometry( x11Screen() );
+    resize( sizeHint().expandedTo( QSize( 200, 150 ) )
+            .boundedTo( QSize( screen.width() * 2 / 3, screen.height() * 2 / 3 ) ) );
+  }
+  tray->setMainWindowNotShown();
+  return true;
+}
+
+void KMMainWin::saveProperties( KConfig *config )
+{
+  config->writeEntry( "HiddenInTray", isHidden() && kmkernel->haveSystemTrayApplet() );
+}
+
+void KMMainWin::readProperties( KConfig *config )
+{
+  mRestoredInTray = config->readBoolEntry( "HiddenInTray", false );
 }
 
 

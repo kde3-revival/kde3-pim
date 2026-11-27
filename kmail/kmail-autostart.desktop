@@ -1,0 +1,16 @@
+# The autostart entry of KMail, installed as share/autostart/kmail.desktop.
+# Off unless kmailrc says Autostart=true in [General]: the first start of
+# KMail writes that, "Start KMail at Login" in the context menu of the tray
+# icon (or Settings > Configure KMail > Appearance > System Tray) changes it.
+[Desktop Entry]
+Name=KMail
+GenericName=Mail Client
+Exec=kmail --tray
+Icon=kmail
+Type=Application
+Terminal=false
+X-KDE-StartupNotify=false
+X-KDE-autostart-after=panel
+X-KDE-autostart-condition=kmailrc:General:Autostart:false
+NoDisplay=true
+OnlyShowIn=KDE;

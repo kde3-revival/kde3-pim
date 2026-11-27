@@ -52,6 +52,14 @@ public:
   /** Write configuration options. */
   virtual void writeConfig(void);
 
+  /** For a new window that is not shown yet: keeps it hidden behind the
+      system tray icon, if the icon is always shown (else the window would
+      be lost), and returns true; false when the caller has to show it. */
+  bool stayInTray();
+
+  /** Whether the session saved the window hidden in the tray. */
+  bool restoredInTray() const { return mRestoredInTray; }
+
 public slots:
   void displayStatusMsg(const QString&);
   void slotEditToolbars();
@@ -60,6 +68,8 @@ public slots:
 
 protected:
   virtual bool queryClose ();
+  virtual void saveProperties( KConfig *config );
+  virtual void readProperties( KConfig *config );
 
 protected slots:
   void slotQuit();
@@ -75,6 +85,7 @@ private:
   ProgressDialog *mProgressDialog;
   int mMessageStatusId;
   bool mReallyClose;
+  bool mRestoredInTray;
 };
 
 #endif

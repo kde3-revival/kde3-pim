@@ -94,6 +94,9 @@ int main(int argc, char *argv[])
   //local, do the init
   KMKernel kmailKernel;
   kmailKernel.init();
+  // starting at login is on until the user turns it off (the first start,
+  // also of an older KMail's settings)
+  KMKernel::initStartAtLogin();
   kapp->dcopClient()->setDefaultObject( kmailKernel.objId() );
 
   // and session management

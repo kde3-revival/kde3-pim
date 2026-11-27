@@ -2517,6 +2517,19 @@ AppearancePageSystemTrayTab::AppearancePageSystemTrayTab( QWidget * parent,
   connect( mNewMailBalloonCheck, SIGNAL( toggled( bool ) ),
            mNewMailBalloonTimeoutSpin, SLOT( setEnabled( bool ) ) );
 
+  // Starting at login, as in the context menu of the tray icon; not in
+  // Kontact: the autostart entry starts the KMail application
+  mAutostartLoaded = false;
+  mAutostartCheck = new QCheckBox( i18n("Start KMail at &login"), this );
+  vlay->addWidget( mAutostartCheck );
+  QWhatsThis::add( mAutostartCheck,
+                   i18n("Start KMail when you log in to KDE. If the system tray icon "
+                        "is always shown, KMail starts in the tray, without the main window.") );
+  connect( mAutostartCheck, SIGNAL( stateChanged( int ) ),
+           this, SLOT( slotEmitChanged( void ) ) );
+  if ( kmkernel->xmlGuiInstance() )
+    mAutostartCheck->hide();
+
   vlay->addStretch( 10 ); // spacer
 }
 
@@ -2530,6 +2543,11 @@ void AppearancePage::SystemTrayTab::doLoadFromGlobalSettings() {
   mNewMailBalloonTimeoutSpin->setValue( GlobalSettings::self()->newMailBalloonTimeout() );
   mNewMailBalloonTimeoutSpin->setEnabled( mNewMailBalloonCheck->isChecked() );
   mNewMailBalloonTimeoutLabel->setEnabled( mNewMailBalloonCheck->isChecked() );
+}
+
+void AppearancePage::SystemTrayTab::doLoadOther() {
+  mAutostartLoaded = KMKernel::startAtLogin();
+  mAutostartCheck->setChecked( mAutostartLoaded );
 }
 
 void AppearancePage::SystemTrayTab::installProfile( KConfig * profile ) {
@@ -2559,6 +2577,13 @@ void AppearancePage::SystemTrayTab::save() {
   GlobalSettings::self()->setSystemTrayPolicy( mSystemTrayGroup->id( mSystemTrayGroup->selected() ) );
   GlobalSettings::self()->setShowNewMailBalloon( mNewMailBalloonCheck->isChecked() );
   GlobalSettings::self()->setNewMailBalloonTimeout( mNewMailBalloonTimeoutSpin->value() );
+  // only a change made here: the tray icon's menu may have changed the
+  // setting since the dialog read it
+  if ( !kmkernel->xmlGuiInstance() &&
+       mAutostartCheck->isChecked() != mAutostartLoaded ) {
+    mAutostartLoaded = mAutostartCheck->isChecked();
+    KMKernel::setStartAtLogin( mAutostartLoaded );
+  }
 }
 
 

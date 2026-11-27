@@ -200,6 +200,7 @@ bool KMKernel::handleCommandLine( bool noArgsOpensReader )
   bool mailto = false;
   bool checkMail = false;
   bool viewOnly = false;
+  bool inTray = false;
   bool calledWithSession = false; // for ignoring '-session foo'
 
   // process args:
@@ -263,6 +264,9 @@ bool KMKernel::handleCommandLine( bool noArgsOpensReader )
   if (args->isSet("check"))
     checkMail = true;
 
+  if (args->isSet("tray"))
+    inTray = true;
+
   if ( args->getOption( "view" ) ) {
     viewOnly = true;
     const QString filename =
@@ -305,7 +309,11 @@ bool KMKernel::handleCommandLine( bool noArgsOpensReader )
 
   if ( viewOnly )
     viewMessage( messageFile );
-  else
+  else if ( inTray && !mailto ) {
+    openReader( checkMail, true );
+    if ( checkMail )
+      this->checkMail();
+  } else
     action( mailto, checkMail, to, cc, bcc, subj, body, messageFile,
             attachURLs, customHeaders );
   return true;
@@ -341,7 +349,7 @@ void KMKernel::saveToProfile( const QString& ) const
 {
 }
 
-void KMKernel::openReader( bool onlyCheck )
+void KMKernel::openReader( bool onlyCheck, bool inTray )
 {
   mWin = 0;
   KMainWindow *ktmw = 0;
@@ -356,12 +364,15 @@ void KMKernel::openReader( bool onlyCheck )
   bool activate;
   if (ktmw) {
     mWin = (KMMainWin *) ktmw;
-    activate = !onlyCheck; // existing window: only activate if not --check
+    // existing window: only activate if not --check; not with --tray
+    // either, it stays as it is, shown or hidden in the tray
+    activate = !onlyCheck && !inTray;
     if ( activate )
        mWin->show();
   } else {
     mWin = new KMMainWin;
-    mWin->show();
+    if ( !inTray || !mWin->stayInTray() )
+      mWin->show();
     activate = false; // new window: no explicit activation (#73591)
   }
 
@@ -1632,8 +1643,13 @@ bool KMKernel::doSessionManagement()
     int n = 1;
     while (KMMainWin::canBeRestored(n)){
       //only restore main windows! (Matthias);
-      if (KMMainWin::classNameOfToplevel(n) == "KMMainWin")
-        (new KMMainWin)->restore(n);
+      if (KMMainWin::classNameOfToplevel(n) == "KMMainWin") {
+        // a window hidden in the tray at logout stays there
+        KMMainWin *win = new KMMainWin;
+        win->restore( n, false );
+        if ( !win->restoredInTray() || !win->stayInTray() )
+          win->show();
+      }
       n++;
     }
     return true; // we were restored by SM
@@ -1988,6 +2004,26 @@ QString KMKernel::localDataPath()
 }
 
 //-------------------------------------------------------------------------------
+
+bool KMKernel::startAtLogin()
+{
+  KConfigGroup general( KMKernel::config(), "General" );
+  return general.readBoolEntry( "Autostart", false );
+}
+
+void KMKernel::setStartAtLogin( bool start )
+{
+  KConfigGroup general( KMKernel::config(), "General" );
+  general.writeEntry( "Autostart", start );
+  general.sync();
+}
+
+void KMKernel::initStartAtLogin()
+{
+  KConfigGroup general( KMKernel::config(), "General" );
+  if ( !general.hasKey( "Autostart" ) )
+    setStartAtLogin( true );
+}
 
 bool KMKernel::haveSystemTrayApplet()
 {
