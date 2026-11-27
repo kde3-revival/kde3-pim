@@ -2798,10 +2798,12 @@ void KMFolderImap::finishMailCheck( const char *dbg, imapState state )
   quiet( false );
   mContentState = state;
   if ( state == imapFinished && !mListingUidValidity.isEmpty() ) {
-    mIndexComplete = mListingFromComplete;
     // (a fetch refused, a message not taken: not as many as the
-    // SELECT had, the listing proves nothing)
-    if ( mIndexComplete && ( mListingExists < 0 || mListingExists == count() ) ) {
+    // SELECT had, the listing proves nothing, nor does the next one
+    // that starts from it)
+    mIndexComplete = mListingFromComplete
+                     && ( mListingExists < 0 || mListingExists == count() );
+    if ( mIndexComplete ) {
       // (a bound of the same UID validity is not lowered)
       if ( mListedUidValidity == mListingUidValidity )
         mListedUidNext = QMAX( mListedUidNext, mListingUidNext );
