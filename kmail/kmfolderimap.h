@@ -601,6 +601,9 @@ private:
   // (a listing of all that ended, and only listings that ended since),
   // and whether the running listing makes it so
   int mListingExists;
+  // (the messages of this listing left out as \Deleted: the SELECT counts them)
+  int mListingDeleted;
+  KIO::Job * mListingDeletedJob;
   bool mIndexComplete;
   bool mListingFromComplete;
   QMap<QString, int> mOwnMessages;

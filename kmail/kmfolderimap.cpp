@@ -89,6 +89,8 @@ KMFolderImap::KMFolderImap(KMFolder* folder, const char* aName)
   mListedNumber = 0;
   mListedUidNext = 0;
   mListingExists = -1;
+  mListingDeleted = 0;
+  mListingDeletedJob = 0;
   mIndexComplete = false;
   mListingFromComplete = false;
 
@@ -1186,6 +1188,7 @@ void KMFolderImap::slotCheckValidityResult(KIO::Job * job)
       if ( !ok ) mListingUidNext = 0;
     }
     mListingExists = exists;
+    mListingDeleted = 0;
     mListingFromComplete = mIndexComplete;
     mIndexComplete = false;
     QString startUid;
@@ -1293,6 +1296,9 @@ void KMFolderImap::reallyGetFolder(const QString &startUid)
     ImapAccountBase::jobData jd( url.url(), folder() );
     jd.cancellable = true;
     account()->insertJob(job, jd);
+    // (the deleted ones of this listing only, not of one it restarts)
+    mListingDeleted = 0;
+    mListingDeletedJob = job;
     connect(job, SIGNAL(result(KIO::Job *)),
             this, SLOT(slotListFolderResult(KIO::Job *)));
     connect(job, SIGNAL(entries(KIO::Job *, const KIO::UDSEntryList &)),
@@ -1454,6 +1460,9 @@ void KMFolderImap::slotListFolderEntries(KIO::Job * job,
         mMailCheckProgressItem->incCompletedItems();
         mMailCheckProgressItem->updateProgress();
       }
+    } else if ( ( mimeType == "message/rfc822-imap" || mimeType == "message/rfc822" ) &&
+                ( flags & 8 ) && job == mListingDeletedJob ) {
+      ++mListingDeleted;
     }
   }
 }
@@ -2802,7 +2811,7 @@ void KMFolderImap::finishMailCheck( const char *dbg, imapState state )
     // SELECT had, the listing proves nothing, nor does the next one
     // that starts from it)
     mIndexComplete = mListingFromComplete
-                     && ( mListingExists < 0 || mListingExists == count() );
+                     && ( mListingExists < 0 || mListingExists == count() + mListingDeleted );
     if ( mIndexComplete ) {
       // (a bound of the same UID validity is not lowered)
       if ( mListedUidValidity == mListingUidValidity )
@@ -2816,6 +2825,8 @@ void KMFolderImap::finishMailCheck( const char *dbg, imapState state )
   mListingUidValidity = QString::null;
   mListingUidNext = 0;
   mListingExists = -1;
+  mListingDeleted = 0;
+  mListingDeletedJob = 0;
   emit folderComplete( this, mContentState == imapFinished );
   close(dbg);
 }
