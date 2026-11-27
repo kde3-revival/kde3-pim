@@ -12,6 +12,8 @@
 #ifndef KMAIL_NEWMAILBALLOON_H
 #define KMAIL_NEWMAILBALLOON_H
 
+#include "accountmanager.h"
+
 #include <qobject.h>
 #include <qguardedptr.h>
 #include <qimage.h>
@@ -40,7 +42,9 @@ namespace KMail {
  * One balloon at a time: the new mail of later checks waits (a bounded
  * queue).  All the text in it comes from the messages: it is plain text
  * (never markup), cut short and kept in its own writing direction.
- * Only what is already here is shown: no message is downloaded for it.
+ * Only what is already here is shown: no message is downloaded for it
+ * (of an online IMAP folder not listed up to its new mail: the sender
+ * and subject of the envelopes the count of the check got).
  */
 class NewMailBalloon : public QObject
 {
@@ -67,8 +71,10 @@ private slots:
   void slotTimedOut();
   void slotBalloonDestroyed();
   void slotHeadersUpdated();
+  void slotFolderComplete();
 
 private:
+  class FolderSet;
   // A new message the balloon can tell about.
   struct Item {
     Q_UINT32 serNum;
@@ -79,8 +85,11 @@ private:
   struct Entry {
     Entry() : count( 0 ), waitSince( 0 ) {}
     int count;                  // new messages in all
+    // all the ones known here: here (serial number) or by their UID and
+    // envelope (online IMAP, a folder not listed up to them)
+    QValueList<AccountManager::NewMessage> messages;
     QValueList<Item> items;     // the first ones known here (at most maxItems)
-    QValueList<Q_UINT32> serNums; // all the ones known here
+    QValueList<Q_UINT32> serNums; // all the ones here (of messages)
     QStringList folderIds;      // their folders, the first first
     QMap<QString, int> unknown; // folder id: new messages not known here
     QString preview;            // the start of the text (one message)
@@ -95,12 +104,17 @@ private:
   bool countsNow( const QString & folderId, QMap<QString, bool> & cache ) const;
   void collect( const QMap<QString, int> & newInFolder, Entry & entry );
   bool stillNew( Entry & entry ) const;
+  bool stillNew( AccountManager::NewMessage & message, FolderSet & folders,
+                 QMap<QString, bool> & countsCache, QString & folderId, Item & item ) const;
+  static void append( Entry & entry, const AccountManager::NewMessage & message,
+                      const QString & folderId, const Item & item );
   bool inTransfer( const Entry & entry ) const;
   void schedule( int msec );
   void closeBalloon( bool byItself = false );
   void next();
   void showMessage( const Entry & entry );
   void selectMessage();
+  void clearPending();
 
   KMMainWidget * mMainWidget;
   QValueList<Entry> mEntries;       // the first is in the balloon (if shown)
@@ -114,6 +128,11 @@ private:
   enum { maxWait = 20 };   // seconds
   Q_UINT32 mPendingSerNum;          // to select once the headers are there
   QGuardedPtr<KMFolder> mPendingFolder;
+  // or the message of this UID (and UID validity) once the folder lists
+  // it; mPendingListed: its listing ended (without it: no selection)
+  ulong mPendingUid;
+  QString mPendingUidValidity;
+  bool mPendingListed;
 };
 
 }

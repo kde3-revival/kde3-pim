@@ -2353,12 +2353,15 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
     // Message-ID of the one that has it.
     QMap<ulong, int> flagsOf;
     QMap<ulong, QString> messageIdOf;
+    // (and the part with its envelope, for the balloon)
+    QMap<ulong, QString> envelopeOf;
     for ( QStringList::ConstIterator part = parts.begin(); part != parts.end(); ++part ) {
       if ( part == parts.begin() )
         continue;
       ulong uid = 0;
       int flags = 0;
       QString messageId;
+      bool envelope = false;
       // (unfolded: a long Message-ID goes on the next line)
       QString text = *part;
       text.replace( "\r\n ", " " );
@@ -2371,12 +2374,22 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
           flags = ( *line ).mid( 9 ).toInt();
         else if ( ( *line ).lower().startsWith( "message-id:" ) )
           messageId = messageIdKey( ( *line ).mid( 11 ) );
+        if ( ( *line ).lower().startsWith( "from:" ) || ( *line ).lower().startsWith( "subject:" ) )
+          envelope = true;
       }
       if ( uid == 0 )
         continue;
       flagsOf[ uid ] = flags;
       if ( !messageId.isEmpty() )
         messageIdOf[ uid ] = messageId;
+      if ( envelope ) {
+        // (unfolded, kio_imap4 folds long lines with a bare LF too)
+        QString headers = *part;
+        headers.replace( "\r\n", "\n" );
+        headers.replace( "\n ", " " );
+        headers.replace( "\n\t", " " );
+        envelopeOf[ uid ] = headers;
+      }
       next = QMAX( next, uid + 1 );
     }
     int count = 0;
@@ -2405,23 +2418,51 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
     // pass from the end: the new ones are the last; the folder opened for
     // it if it is closed, as INBOX listed for the filters)
     // (a folder closed and not listed up to them: none here)
+    QMap<ulong, Q_UINT32> serNumOf;
     if ( !counted.isEmpty() && ( folder()->isOpened() || mLastUid >= counted.first() )
          && open( "newmail" ) == 0 ) {
       QValueList<ulong>::ConstIterator want = counted.fromLast();
-      QValueList<Q_UINT32> serNums;
       for ( int i = this->count() - 1; i >= 0 && want != counted.end(); --i ) {
         const KMMsgBase * msgBase = getMsgBase( i );
         if ( !msgBase )
           continue;
         while ( want != counted.end() && msgBase->UID() < *want )
           want = ( want == counted.begin() ) ? counted.end() : --want;
-        if ( want != counted.end() && msgBase->UID() == *want )
-          serNums.prepend( KMMsgDict::instance()->getMsgSerNum( folder(), i ) );
+        if ( want != counted.end() && msgBase->UID() == *want ) {
+          const Q_UINT32 serNum = KMMsgDict::instance()->getMsgSerNum( folder(), i );
+          if ( serNum )
+            serNumOf[ *want ] = serNum;
+        }
       }
       close( "newmail" );
-      // (in the order of arrival)
-      for ( QValueList<Q_UINT32>::ConstIterator sn = serNums.begin(); sn != serNums.end(); ++sn )
-        kmkernel->acctMgr()->addNewMessage( account(), *sn, folder()->idString() );
+    }
+    // (in the order of arrival; one not here by its UID and the envelope
+    // of this fetch, one without an envelope only counted)
+    for ( QValueList<ulong>::ConstIterator uid = counted.begin(); uid != counted.end(); ++uid ) {
+      QMap<ulong, Q_UINT32>::ConstIterator sn = serNumOf.find( *uid );
+      if ( sn != serNumOf.end() ) {
+        kmkernel->acctMgr()->addNewMessage( account(), sn.data(), folder()->idString() );
+        continue;
+      }
+      QMap<ulong, QString>::ConstIterator envelope = envelopeOf.find( *uid );
+      if ( envelope == envelopeOf.end() )
+        continue;
+      // (its headers: the part from its first line on, decoded as
+      // those of a message listed)
+      QString text = envelope.data();
+      while ( text.startsWith( "\n" ) )
+        text.remove( 0, 1 );
+      KMMessage msg;
+      msg.fromString( QCString( text.latin1() ) );
+      AccountManager::NewMessage message;
+      message.folderId = folder()->idString();
+      message.uid = *uid;
+      message.uidValidity = validity;
+      message.from = msg.fromStrip();
+      message.subject = msg.subject();
+      if ( !msg.headerField( "Date" ).isEmpty() )
+        message.date = msg.date();
+      kmkernel->acctMgr()->addNewEnvelope( account(), message );
     }
     if ( selectedNow )
       next = QMAX( next, uidNext );

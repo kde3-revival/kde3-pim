@@ -18,6 +18,7 @@
 #include "accountmanager.h"
 #include "globalsettings.h"
 #include "kmfolder.h"
+#include "kmfolderimap.h"
 #include "kmfoldermgr.h"
 #include "kmfoldertree.h"
 #include "folderstorage.h"
@@ -299,9 +300,11 @@ void notify( int present, const QString & text, WId window )
   client->send( "knotify", "Notify", "notify(QString,QString,QString,QString,QString,int,int,int,int)", data );
 }
 
+} // namespace
+
 // The folders of the messages the balloon looks at, each opened once
 // (a closed one reads its whole index) and closed again at the end.
-class FolderSet
+class NewMailBalloon::FolderSet
 {
 public:
   ~FolderSet()
@@ -347,22 +350,61 @@ public:
     return ( *folder )->getMsgBase( *idx );
   }
 
+  enum { NotListed, Listed, Gone };
+
+  /** Where the message of @p uid (of @p uidValidity) in the online IMAP
+      folder @p folder is: Listed (at @p idx, the folder open), Gone (the
+      folder is listed beyond it without it: moved or deleted) or
+      NotListed (not listed up to it yet, being listed or listed with
+      another UID validity). */
+  int findUid( KMFolder * folder, ulong uid, const QString & uidValidity, int * idx )
+  {
+    *idx = -1;
+    if ( !folder || folder->folderType() != KMFolderTypeImap )
+      return NotListed;
+    KMFolderImap * imap = static_cast<KMFolderImap*>( folder->storage() );
+    if ( uidValidity.isEmpty() || imap->uidValidity() != uidValidity ||
+         imap->getContentState() == KMFolderImap::imapListingInProgress || !open( folder ) )
+      return NotListed;
+    QMap<KMFolder*, QMap<ulong, int> >::Iterator uids = mUids.find( folder );
+    if ( uids == mUids.end() ) {
+      // (its UIDs once: the index of each, the greatest at 0)
+      uids = mUids.insert( folder, QMap<ulong, int>() );
+      ulong last = 0;
+      for ( int i = 0; i < folder->count(); ++i ) {
+        const KMMsgBase * msgBase = folder->getMsgBase( i );
+        if ( !msgBase || !msgBase->UID() )
+          continue;
+        uids.data().insert( msgBase->UID(), i );
+        last = QMAX( last, msgBase->UID() );
+      }
+      uids.data().insert( 0, (int)last );
+    }
+    QMap<ulong, int>::ConstIterator found = uids.data().find( uid );
+    if ( found != uids.data().end() ) {
+      *idx = found.data();
+      return Listed;
+    }
+    return (ulong)uids.data()[ 0 ] >= uid ? Gone : NotListed;
+  }
+
 private:
   static const char * const owner;
   QValueList<QGuardedPtr<KMFolder> > mOpen;
   QValueList<KMFolder*> mFailed;
+  QMap<KMFolder*, QMap<ulong, int> > mUids;
 };
 
-const char * const FolderSet::owner = "newmailballoon";
-
-} // namespace
+const char * const NewMailBalloon::FolderSet::owner = "newmailballoon";
 
 NewMailBalloon::NewMailBalloon( KMMainWidget * mainWidget, const char * name )
   : QObject( mainWidget, name ),
     mMainWidget( mainWidget ),
     mShown( 0 ),
     mPoll( new QTimer( this, "newMailBalloonPoll" ) ),
-    mPendingSerNum( 0 )
+    mPendingSerNum( 0 ),
+    mPendingUid( 0 ),
+    mPendingListed( false )
 {
   connect( mPoll, SIGNAL( timeout() ), SLOT( showBalloon() ) );
 }
@@ -434,12 +476,73 @@ bool NewMailBalloon::countsNow( const QString & folderId, QMap<QString, bool> & 
   return result;
 }
 
+// Whether @p message is still worth a balloon, where it is now: still
+// there, unread, not spam, not ignored, in a folder that counts.  One
+// known by its UID only (online IMAP) is kept until its folder is listed
+// up to it: as one here if it is listed then (@p message gets its serial
+// number), not if it is gone.  @p folderId its folder now, @p item what
+// the balloon tells about it.
+bool NewMailBalloon::stillNew( AccountManager::NewMessage & message, FolderSet & folders,
+                               QMap<QString, bool> & countsCache, QString & folderId, Item & item ) const
+{
+  if ( !message.serNum ) {
+    if ( !countsNow( message.folderId, countsCache ) )
+      return false;
+    KMFolder * folder = kmkernel->findFolderById( message.folderId );
+    int idx = -1;
+    switch ( folders.findUid( folder, message.uid, message.uidValidity, &idx ) ) {
+    case FolderSet::Gone:
+      return false;
+    case FolderSet::Listed:
+      message.serNum = KMMsgDict::instance()->getMsgSerNum( folder, idx );
+      if ( !message.serNum )
+        return false;
+      break;
+    default:
+      folderId = message.folderId;
+      item.serNum = 0;
+      item.from = squash( message.from, 200 );
+      item.subject = squash( message.subject, 200 );
+      return true;
+    }
+  }
+  KMFolder * folder = 0;
+  int idx = -1;
+  const KMMsgBase * msgBase = folders.locate( message.serNum, &folder, &idx );
+  if ( !msgBase || !countsNow( folder->idString(), countsCache ) ||
+       !( msgBase->isNew() || msgBase->isUnread() ) || msgBase->isSpam() || msgBase->isIgnored() )
+    return false;
+  folderId = folder->idString();
+  item.serNum = message.serNum;
+  item.from = squash( msgBase->fromStrip(), 200 );
+  item.subject = squash( msgBase->subject(), 200 );
+  return true;
+}
+
+// @p message (still new, in @p folderId, @p item) into @p entry, once
+void NewMailBalloon::append( Entry & entry, const AccountManager::NewMessage & message,
+                             const QString & folderId, const Item & item )
+{
+  if ( message.serNum ) {
+    if ( entry.serNums.contains( message.serNum ) )
+      return;
+    entry.serNums.append( message.serNum );
+  }
+  entry.messages.append( message );
+  if ( !entry.folderIds.contains( folderId ) )
+    entry.folderIds.append( folderId );
+  if ( entry.items.count() < maxItems )
+    entry.items.append( item );
+}
+
 // The new mail of a check (@p newInFolder: how many messages in which
 // folder) in an entry: the new messages the check received in those
 // folders (AccountManager::newMessages(), each with the folder it is
 // counted in) where they are now, unless they are read, spam or ignored
-// or their folders do not count; the rest of the counted messages (IMAP
-// folders the check did not list) only counted.
+// or their folders do not count (stillNew()); those of online IMAP
+// folders not listed up to them by their envelopes; the rest of the
+// counted messages (IMAP folders the check did not list, no envelope)
+// only counted.
 void NewMailBalloon::collect( const QMap<QString, int> & newInFolder, Entry & entry )
 {
   QMap<QString, bool> countsCache;
@@ -451,27 +554,14 @@ void NewMailBalloon::collect( const QMap<QString, int> & newInFolder, Entry & en
     if ( !newInFolder.contains( ( *it ).folderId ) )
       continue;   // not counted by this check
     found[ ( *it ).folderId ] += 1;
+    // (moved by a filter into a folder that does not count: left out)
     if ( !countsNow( ( *it ).folderId, countsCache ) )
       continue;
-    KMFolder * folder = 0;
-    int idx = -1;
-    const KMMsgBase * msgBase = folders.locate( ( *it ).serNum, &folder, &idx );
-    if ( !msgBase )
-      continue;   // gone meanwhile
-    if ( folder->idString() != ( *it ).folderId && !countsNow( folder->idString(), countsCache ) )
-      continue;   // moved by a filter into a folder that does not count
-    if ( !( msgBase->isNew() || msgBase->isUnread() ) || msgBase->isSpam() || msgBase->isIgnored() )
-      continue;
-    entry.serNums.append( ( *it ).serNum );
-    if ( !entry.folderIds.contains( folder->idString() ) )
-      entry.folderIds.append( folder->idString() );
-    if ( entry.items.count() < maxItems ) {
-      Item item;
-      item.serNum = ( *it ).serNum;
-      item.from = squash( msgBase->fromStrip(), 200 );
-      item.subject = squash( msgBase->subject(), 200 );
-      entry.items.append( item );
-    }
+    AccountManager::NewMessage message = *it;
+    QString folderId;
+    Item item;
+    if ( stillNew( message, folders, countsCache, folderId, item ) )
+      append( entry, message, folderId, item );
   }
 
   QStringList ids = newInFolder.keys();
@@ -486,7 +576,7 @@ void NewMailBalloon::collect( const QMap<QString, int> & newInFolder, Entry & en
     if ( !entry.folderIds.contains( *it ) )
       entry.folderIds.append( *it );
   }
-  entry.count = entry.serNums.count();
+  entry.count = entry.messages.count();
   for ( QMap<QString, int>::ConstIterator it = entry.unknown.begin(); it != entry.unknown.end(); ++it )
     entry.count += it.data();
 
@@ -562,7 +652,7 @@ bool NewMailBalloon::newMail( const QMap<QString, int> & newInFolder, const QStr
 }
 
 // Whether @p entry is still worth a balloon: one of its messages is
-// still there and unread, or one of the folders of its messages only
+// still new (stillNew()), or one of the folders of its messages only
 // counted is still there.  The messages that are gone, or that the
 // filters moved into a folder that does not count (online IMAP filters
 // after the check), or that became read, spam or ignored, leave it (and its
@@ -578,42 +668,29 @@ bool NewMailBalloon::stillNew( Entry & entry ) const
     }
   }
   QMap<QString, bool> countsCache;
-  QValueList<Q_UINT32> serNums;
-  QStringList folderIds;
-  QValueList<Item> items;
-  for ( QValueList<Q_UINT32>::ConstIterator it = entry.serNums.begin(); it != entry.serNums.end(); ++it ) {
-    KMFolder * folder = 0;
-    int idx = -1;
-    const KMMsgBase * msgBase = folders.locate( *it, &folder, &idx );
-    if ( !msgBase || !countsNow( folder->idString(), countsCache ) ||
-         !( msgBase->isNew() || msgBase->isUnread() ) || msgBase->isSpam() || msgBase->isIgnored() ) {
-      --entry.count;
-      continue;
-    }
-    serNums.append( *it );
-    if ( !folderIds.contains( folder->idString() ) )
-      folderIds.append( folder->idString() );
-    if ( items.count() < maxItems ) {
-      Item item;
-      item.serNum = *it;
-      item.from = squash( msgBase->fromStrip(), 200 );
-      item.subject = squash( msgBase->subject(), 200 );
-      items.append( item );
-    }
+  Entry kept;
+  for ( QValueList<AccountManager::NewMessage>::ConstIterator it = entry.messages.begin(); it != entry.messages.end(); ++it ) {
+    AccountManager::NewMessage message = *it;
+    QString folderId;
+    Item item;
+    if ( stillNew( message, folders, countsCache, folderId, item ) )
+      append( kept, message, folderId, item );
   }
+  entry.count -= entry.messages.count() - kept.messages.count();
   for ( QMap<QString, int>::ConstIterator it = entry.unknown.begin(); it != entry.unknown.end(); ++it ) {
-    if ( !folderIds.contains( it.key() ) )
-      folderIds.append( it.key() );
+    if ( !kept.folderIds.contains( it.key() ) )
+      kept.folderIds.append( it.key() );
   }
-  if ( serNums.isEmpty() ) {
+  if ( kept.serNums.isEmpty() ) {
     // (the preview and picture were those of a message that is gone)
     entry.preview = QString::null;
     entry.picture = QImage();
   }
-  entry.serNums = serNums;
-  entry.folderIds = folderIds;
-  entry.items = items;
-  return !entry.serNums.isEmpty() || !entry.unknown.isEmpty();
+  entry.messages = kept.messages;
+  entry.serNums = kept.serNums;
+  entry.folderIds = kept.folderIds;
+  entry.items = kept.items;
+  return !entry.messages.isEmpty() || !entry.unknown.isEmpty();
 }
 
 // Whether one of the messages of @p entry is being fetched (for the
@@ -817,7 +894,8 @@ void NewMailBalloon::slotAction( int action )
 
 // Read: the main window in front, the folder of the first message
 // still there selected and the message in it (its folder only: count
-// only).
+// only).  A message known by its UID only (online IMAP): its folder, and
+// the message once the folder is listed with it.
 void NewMailBalloon::showMessage( const Entry & entry )
 {
   KMSystemTray * tray = mMainWidget->systray();
@@ -833,15 +911,24 @@ void NewMailBalloon::showMessage( const Entry & entry )
 
   // the first of its messages that is still there, else its first
   // folder that is
+  clearPending();
   KMFolder * folder = 0;
-  mPendingSerNum = 0;
-  for ( QValueList<Q_UINT32>::ConstIterator it = entry.serNums.begin(); it != entry.serNums.end(); ++it ) {
+  for ( QValueList<AccountManager::NewMessage>::ConstIterator it = entry.messages.begin(); it != entry.messages.end(); ++it ) {
+    if ( !( *it ).serNum ) {
+      folder = kmkernel->findFolderById( ( *it ).folderId );
+      if ( folder ) {
+        mPendingUid = ( *it ).uid;
+        mPendingUidValidity = ( *it ).uidValidity;
+        break;
+      }
+      continue;
+    }
     KMFolder * where = 0;
     int idx = -1;
-    KMMsgDict::instance()->getLocation( *it, &where, &idx );
+    KMMsgDict::instance()->getLocation( ( *it ).serNum, &where, &idx );
     if ( where && idx >= 0 ) {
       folder = where;
-      mPendingSerNum = *it;
+      mPendingSerNum = ( *it ).serNum;
       break;
     }
   }
@@ -850,12 +937,21 @@ void NewMailBalloon::showMessage( const Entry & entry )
   if ( !folder )
     return;
   mPendingFolder = folder;
+  // (an IMAP folder shown already is not listed again by showing it)
+  const bool shown = mMainWidget->folder() == folder;
   mMainWidget->folderTree()->showFolder( folder );
-  if ( !mPendingSerNum )
+  if ( !mPendingSerNum && !mPendingUid )
     return;
+  if ( mPendingUid ) {
+    KMFolderImap * imap = folder->folderType() == KMFolderTypeImap
+                          ? static_cast<KMFolderImap*>( folder->storage() ) : 0;
+    if ( imap && !( shown && imap->getContentState() != KMFolderImap::imapListingInProgress ) )
+      connect( imap, SIGNAL( folderComplete( KMFolderImap*, bool ) ), SLOT( slotFolderComplete() ) );
+    else
+      mPendingListed = true;
+  }
   // Selecting a folder builds its message list (later for IMAP).
   KMHeaders * headers = mMainWidget->headers();
-  disconnect( headers, SIGNAL( messageListUpdated() ), this, SLOT( slotHeadersUpdated() ) );
   connect( headers, SIGNAL( messageListUpdated() ), SLOT( slotHeadersUpdated() ) );
   QTimer::singleShot( 0, this, SLOT( slotHeadersUpdated() ) );
 }
@@ -865,12 +961,53 @@ void NewMailBalloon::slotHeadersUpdated()
   selectMessage();
 }
 
-// The message of Read, once its folder is the one shown.
+// The listing of the folder of Read ended: its message is there now, or
+// will not be (after the main window's list is built).
+void NewMailBalloon::slotFolderComplete()
+{
+  mPendingListed = true;
+  QTimer::singleShot( 0, this, SLOT( slotHeadersUpdated() ) );
+}
+
+// Nothing more to select.
+void NewMailBalloon::clearPending()
+{
+  disconnect( mMainWidget->headers(), SIGNAL( messageListUpdated() ), this, SLOT( slotHeadersUpdated() ) );
+  if ( mPendingFolder && mPendingFolder->storage() )
+    disconnect( mPendingFolder->storage(), SIGNAL( folderComplete( KMFolderImap*, bool ) ),
+                this, SLOT( slotFolderComplete() ) );
+  mPendingSerNum = 0;
+  mPendingUid = 0;
+  mPendingUidValidity = QString::null;
+  mPendingListed = false;
+  mPendingFolder = 0;
+}
+
+// The message of Read, once its folder is the one shown (one known by
+// its UID: once the folder is listed with it; listed without it: none).
 void NewMailBalloon::selectMessage()
 {
   KMHeaders * headers = mMainWidget->headers();
-  if ( !mPendingSerNum || !mPendingFolder || headers->folder() != mPendingFolder )
+  if ( !mPendingFolder || headers->folder() != mPendingFolder )
     return;
+  if ( mPendingUid ) {
+    FolderSet folders;
+    int idx = -1;
+    const int where = folders.findUid( mPendingFolder, mPendingUid, mPendingUidValidity, &idx );
+    if ( where == FolderSet::Listed ) {
+      mPendingSerNum = KMMsgDict::instance()->getMsgSerNum( mPendingFolder, idx );
+      mPendingUid = 0;
+    } else if ( where == FolderSet::Gone || mPendingListed ) {
+      clearPending();
+      return;
+    } else {
+      return;
+    }
+  }
+  if ( !mPendingSerNum ) {
+    clearPending();
+    return;
+  }
   KMFolder * folder = 0;
   int idx = -1;
   KMMsgDict::instance()->getLocation( mPendingSerNum, &folder, &idx );
@@ -878,11 +1015,8 @@ void NewMailBalloon::selectMessage()
     return;
   headers->clearSelection();   // (only this message selected)
   headers->setCurrentItemBySerialNum( mPendingSerNum );
-  if ( headers->currentItemIndex() == idx ) {
-    mPendingSerNum = 0;
-    mPendingFolder = 0;
-    disconnect( headers, SIGNAL( messageListUpdated() ), this, SLOT( slotHeadersUpdated() ) );
-  }
+  if ( headers->currentItemIndex() == idx )
+    clearPending();
 }
 
 #include "newmailballoon.moc"
