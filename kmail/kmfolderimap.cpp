@@ -84,6 +84,10 @@ KMFolderImap::KMFolderImap(KMFolder* folder, const char* aName)
   mNewMailUidNext = 0;
   mNewMailCount = 0;
   mStatusUidNext = 0;
+  mListingsStarted = 0;
+  mListingUidNext = 0;
+  mListedNumber = 0;
+  mListedUidNext = 0;
 
   connect (this, SIGNAL( folderComplete( KMFolderImap*, bool ) ),
            this, SLOT( slotCompleteMailCheckProgress()) );
@@ -1167,6 +1171,10 @@ void KMFolderImap::slotCheckValidityResult(KIO::Job * job)
       uidNext = cstr.mid( a + 11, b - a - 11 ).toULong( &ok );
       if ( !ok ) uidNext = 0;
     }
+    // (a listing of the messages starts: its SELECT)
+    ++mListingsStarted;
+    mListingUidValidity = uidv;
+    mListingUidNext = uidNext;
     QString startUid;
     if (uidValidity() != uidv)
     {
@@ -2458,6 +2466,7 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
       message.folderId = folder()->idString();
       message.uid = *uid;
       message.uidValidity = validity;
+      message.listing = mListingsStarted;
       message.from = msg.fromStrip();
       message.subject = msg.subject();
       if ( !msg.headerField( "Date" ).isEmpty() )
@@ -2770,6 +2779,13 @@ void KMFolderImap::finishMailCheck( const char *dbg, imapState state )
 {
   quiet( false );
   mContentState = state;
+  if ( state == imapFinished && !mListingUidValidity.isEmpty() ) {
+    mListedNumber = mListingsStarted;
+    mListedUidValidity = mListingUidValidity;
+    mListedUidNext = mListingUidNext;
+  }
+  mListingUidValidity = QString::null;
+  mListingUidNext = 0;
   emit folderComplete( this, mContentState == imapFinished );
   close(dbg);
 }

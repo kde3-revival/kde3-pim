@@ -132,6 +132,7 @@ private:
   // it; mPendingListed: its listing ended (without it: no selection)
   ulong mPendingUid;
   QString mPendingUidValidity;
+  ulong mPendingListing;
   bool mPendingListed;
 };
 

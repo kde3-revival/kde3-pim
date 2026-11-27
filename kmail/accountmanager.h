@@ -118,9 +118,10 @@ public:
       (id) the check counts it in (checkedMail()'s newInFolder).  One not
       here (serNum 0: an online IMAP folder not listed up to it) by its
       UID in the folder and the envelope the server gave for it (sender
-      and subject decoded, its date, 0 if none). */
+      and subject decoded, its date, 0 if none), with the listings of
+      the folder started before the count (KMFolderImap::listingsStarted()). */
   struct NewMessage {
-    NewMessage() : serNum( 0 ), uid( 0 ), date( 0 ) {}
+    NewMessage() : serNum( 0 ), uid( 0 ), date( 0 ), listing( 0 ) {}
     Q_UINT32 serNum;
     QString folderId;
     ulong uid;
@@ -128,6 +129,7 @@ public:
     QString from;
     QString subject;
     time_t date;
+    ulong listing;
   };
 
   /** A message that arrived in the mail check of @p account running now:

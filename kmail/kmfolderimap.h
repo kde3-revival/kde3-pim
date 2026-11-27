@@ -280,6 +280,16 @@ public:
   void checkNewMail();
   /** The new mail counted since the last call, none from now on. */
   int takeNewMailCount();
+
+  /** The listings of the messages started so far (each gets the next
+      number). */
+  ulong listingsStarted() const { return mListingsStarted; }
+  /** The last listing that ended complete: its number (0: none yet),
+      the UID validity and the next UID (0: unknown) of its SELECT.  It
+      has every message of a UID below that next UID that was there. */
+  ulong listedNumber() const { return mListedNumber; }
+  QString listedUidValidity() const { return mListedUidValidity; }
+  ulong listedUidNext() const { return mListedUidNext; }
   void setIncludeInMailCheck( bool check );
 
   /** Inherited */
@@ -575,6 +585,14 @@ private:
   ulong mStatusUidNext;
   QString mStatusUidValidity;
   int mNewMailCount;
+  // the listings (listingsStarted(), listedNumber()): the one running,
+  // the last one complete
+  ulong mListingsStarted;
+  QString mListingUidValidity;
+  ulong mListingUidNext;
+  ulong mListedNumber;
+  QString mListedUidValidity;
+  ulong mListedUidNext;
   QMap<QString, int> mOwnMessages;
   QStringList mOwnMessageOrder;
 };

@@ -352,40 +352,43 @@ public:
 
   enum { NotListed, Listed, Gone };
 
-  /** Where the message of @p uid (of @p uidValidity) in the online IMAP
-      folder @p folder is: Listed (at @p idx, the folder open), Gone (the
-      folder is listed beyond it without it: moved or deleted) or
-      NotListed (not listed up to it yet, being listed or listed with
-      another UID validity). */
-  int findUid( KMFolder * folder, ulong uid, const QString & uidValidity, int * idx )
+  /** Where the message of @p uid (of @p uidValidity, counted after
+      @p listing listings of the folder had started) in the online IMAP
+      folder @p folder is: Listed (at @p idx, the folder open), Gone
+      (a listing that ended has not got it: one of its UID validity up
+      to a later UID, or one started after the count with another UID
+      validity) or NotListed (not known yet). */
+  int findUid( KMFolder * folder, ulong uid, const QString & uidValidity, ulong listing, int * idx )
   {
     *idx = -1;
-    if ( !folder || folder->folderType() != KMFolderTypeImap )
+    if ( !folder || folder->folderType() != KMFolderTypeImap || uidValidity.isEmpty() )
       return NotListed;
     KMFolderImap * imap = static_cast<KMFolderImap*>( folder->storage() );
-    if ( uidValidity.isEmpty() || imap->uidValidity() != uidValidity ||
-         imap->getContentState() == KMFolderImap::imapListingInProgress || !open( folder ) )
+    if ( imap->getContentState() == KMFolderImap::imapListingInProgress ||
+         imap->getContentState() == KMFolderImap::imapDownloadInProgress )
       return NotListed;
-    QMap<KMFolder*, QMap<ulong, int> >::Iterator uids = mUids.find( folder );
-    if ( uids == mUids.end() ) {
-      // (its UIDs once: the index of each, the greatest at 0)
-      uids = mUids.insert( folder, QMap<ulong, int>() );
-      ulong last = 0;
-      for ( int i = 0; i < folder->count(); ++i ) {
-        const KMMsgBase * msgBase = folder->getMsgBase( i );
-        if ( !msgBase || !msgBase->UID() )
-          continue;
-        uids.data().insert( msgBase->UID(), i );
-        last = QMAX( last, msgBase->UID() );
+    if ( imap->uidValidity() == uidValidity && open( folder ) ) {
+      QMap<KMFolder*, QMap<ulong, int> >::Iterator uids = mUids.find( folder );
+      if ( uids == mUids.end() ) {
+        // (its UIDs once: the index of each)
+        uids = mUids.insert( folder, QMap<ulong, int>() );
+        for ( int i = 0; i < folder->count(); ++i ) {
+          const KMMsgBase * msgBase = folder->getMsgBase( i );
+          if ( msgBase && msgBase->UID() )
+            uids.data().insert( msgBase->UID(), i );
+        }
       }
-      uids.data().insert( 0, (int)last );
+      QMap<ulong, int>::ConstIterator found = uids.data().find( uid );
+      if ( found != uids.data().end() ) {
+        *idx = found.data();
+        return Listed;
+      }
     }
-    QMap<ulong, int>::ConstIterator found = uids.data().find( uid );
-    if ( found != uids.data().end() ) {
-      *idx = found.data();
-      return Listed;
-    }
-    return (ulong)uids.data()[ 0 ] >= uid ? Gone : NotListed;
+    if ( !imap->listedNumber() )
+      return NotListed;
+    if ( imap->listedUidValidity() != uidValidity )
+      return imap->listedNumber() > listing ? Gone : NotListed;
+    return imap->listedUidNext() > uid ? Gone : NotListed;
   }
 
 private:
@@ -404,6 +407,7 @@ NewMailBalloon::NewMailBalloon( KMMainWidget * mainWidget, const char * name )
     mPoll( new QTimer( this, "newMailBalloonPoll" ) ),
     mPendingSerNum( 0 ),
     mPendingUid( 0 ),
+    mPendingListing( 0 ),
     mPendingListed( false )
 {
   connect( mPoll, SIGNAL( timeout() ), SLOT( showBalloon() ) );
@@ -490,7 +494,7 @@ bool NewMailBalloon::stillNew( AccountManager::NewMessage & message, FolderSet &
       return false;
     KMFolder * folder = kmkernel->findFolderById( message.folderId );
     int idx = -1;
-    switch ( folders.findUid( folder, message.uid, message.uidValidity, &idx ) ) {
+    switch ( folders.findUid( folder, message.uid, message.uidValidity, message.listing, &idx ) ) {
     case FolderSet::Gone:
       return false;
     case FolderSet::Listed:
@@ -919,6 +923,7 @@ void NewMailBalloon::showMessage( const Entry & entry )
       if ( folder ) {
         mPendingUid = ( *it ).uid;
         mPendingUidValidity = ( *it ).uidValidity;
+        mPendingListing = ( *it ).listing;
         break;
       }
       continue;
@@ -945,7 +950,9 @@ void NewMailBalloon::showMessage( const Entry & entry )
   if ( mPendingUid ) {
     KMFolderImap * imap = folder->folderType() == KMFolderTypeImap
                           ? static_cast<KMFolderImap*>( folder->storage() ) : 0;
-    if ( imap && !( shown && imap->getContentState() != KMFolderImap::imapListingInProgress ) )
+    const bool listing = imap && ( imap->getContentState() == KMFolderImap::imapListingInProgress ||
+                                   imap->getContentState() == KMFolderImap::imapDownloadInProgress );
+    if ( imap && ( !shown || listing ) )
       connect( imap, SIGNAL( folderComplete( KMFolderImap*, bool ) ), SLOT( slotFolderComplete() ) );
     else
       mPendingListed = true;
@@ -979,6 +986,7 @@ void NewMailBalloon::clearPending()
   mPendingSerNum = 0;
   mPendingUid = 0;
   mPendingUidValidity = QString::null;
+  mPendingListing = 0;
   mPendingListed = false;
   mPendingFolder = 0;
 }
@@ -993,7 +1001,7 @@ void NewMailBalloon::selectMessage()
   if ( mPendingUid ) {
     FolderSet folders;
     int idx = -1;
-    const int where = folders.findUid( mPendingFolder, mPendingUid, mPendingUidValidity, &idx );
+    const int where = folders.findUid( mPendingFolder, mPendingUid, mPendingUidValidity, mPendingListing, &idx );
     if ( where == FolderSet::Listed ) {
       mPendingSerNum = KMMsgDict::instance()->getMsgSerNum( mPendingFolder, idx );
       mPendingUid = 0;
