@@ -23,6 +23,7 @@
 #include <qobject.h>
 #include <qtimer.h>
 #include <qvaluelist.h>
+#include <time.h>
 #include "kmaccount.h"
 #include "logindsleep.h"
 #include <kdepimmacros.h>
@@ -114,16 +115,31 @@ public slots:
 
 public:
   /** A new message of a mail check: its serial number and the folder
-      (id) the check counts it in (checkedMail()'s newInFolder). */
+      (id) the check counts it in (checkedMail()'s newInFolder).  One not
+      here (serNum 0: an online IMAP folder not listed up to it) by its
+      UID in the folder and the envelope the server gave for it (sender
+      and subject decoded, its date, 0 if none), with the listings of
+      the folder started before the count (KMFolderImap::listingsStarted()). */
   struct NewMessage {
+    NewMessage() : serNum( 0 ), uid( 0 ), date( 0 ), listing( 0 ) {}
     Q_UINT32 serNum;
     QString folderId;
+    ulong uid;
+    QString uidValidity;
+    QString from;
+    QString subject;
+    time_t date;
+    ulong listing;
   };
 
   /** A message that arrived in the mail check of @p account running now:
       @p serNum its serial number, @p folderId the folder the check
       counts it in.  Ignored unless @p account is being checked. */
   void addNewMessage( const KMAccount * account, Q_UINT32 serNum, const QString & folderId );
+
+  /** As addNewMessage(), for a message not here: @p message has the
+      folder, the UID (with its UID validity) and the envelope. */
+  void addNewEnvelope( const KMAccount * account, const NewMessage & message );
 
   /** The new messages of the mail check that checkedMail() is emitted
       for (valid while it is emitted), in the order of arrival, each
@@ -167,6 +183,7 @@ private:
   // and the new messages themselves (newMessages()), each once
   QValueList<NewMessage> mTotalNewMessages;
   QMap<Q_UINT32, bool> mTotalNewMessageSet;
+  QMap<QString, bool> mTotalNewEnvelopeSet;   // folder id and UID
   void clearTotalNew();
 
   // if a summary should be displayed

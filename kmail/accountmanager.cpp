@@ -369,6 +369,7 @@ void AccountManager::clearTotalNew()
   mTotalNewInFolder.clear();
   mTotalNewMessages.clear();
   mTotalNewMessageSet.clear();
+  mTotalNewEnvelopeSet.clear();
 }
 
 //-----------------------------------------------------------------------------
@@ -385,6 +386,23 @@ void AccountManager::addNewMessage( const KMAccount * account, Q_UINT32 serNum, 
   message.serNum = serNum;
   message.folderId = folderId;
   mTotalNewMessages.append( message );
+}
+
+//-----------------------------------------------------------------------------
+void AccountManager::addNewEnvelope( const KMAccount * account, const NewMessage & message )
+{
+  if ( !message.uid || message.folderId.isEmpty() || !account ||
+       mTotalNewMessages.count() >= maxNewMessages )
+    return;
+  if ( !mAcctChecking.contains( const_cast<KMAccount*>( account ) ) )
+    return;
+  const QString key = message.folderId + '\n' + QString::number( message.uid );
+  if ( mTotalNewEnvelopeSet.contains( key ) )
+    return;
+  mTotalNewEnvelopeSet.insert( key, true );
+  NewMessage envelope = message;
+  envelope.serNum = 0;
+  mTotalNewMessages.append( envelope );
 }
 
 //-----------------------------------------------------------------------------

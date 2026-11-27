@@ -84,6 +84,15 @@ KMFolderImap::KMFolderImap(KMFolder* folder, const char* aName)
   mNewMailUidNext = 0;
   mNewMailCount = 0;
   mStatusUidNext = 0;
+  mListingsStarted = 0;
+  mListingUidNext = 0;
+  mListedNumber = 0;
+  mListedUidNext = 0;
+  mListingExists = -1;
+  mListingDeleted = 0;
+  mListingDeletedJob = 0;
+  mIndexComplete = false;
+  mListingFromComplete = false;
 
   connect (this, SIGNAL( folderComplete( KMFolderImap*, bool ) ),
            this, SLOT( slotCompleteMailCheckProgress()) );
@@ -1167,6 +1176,21 @@ void KMFolderImap::slotCheckValidityResult(KIO::Job * job)
       uidNext = cstr.mid( a + 11, b - a - 11 ).toULong( &ok );
       if ( !ok ) uidNext = 0;
     }
+    // A listing of the messages starts: its SELECT, the next UID of
+    // this one or (the mailbox selected before) of the one before,
+    // lower: a bound of the UIDs it lists as good.  The index is not
+    // complete until it ends (killed, failed: not).
+    ++mListingsStarted;
+    mListingUidValidity = uidv;
+    mListingUidNext = uidNext;
+    if ( !mListingUidNext && a >= 0 && (b - a - 11) >= 0 ) {
+      mListingUidNext = cstr.mid( a + 11, b - a - 11 ).toULong( &ok );
+      if ( !ok ) mListingUidNext = 0;
+    }
+    mListingExists = exists;
+    mListingDeleted = 0;
+    mListingFromComplete = mIndexComplete;
+    mIndexComplete = false;
     QString startUid;
     if (uidValidity() != uidv)
     {
@@ -1262,6 +1286,8 @@ void KMFolderImap::reallyGetFolder(const QString &startUid)
   quiet(true);
   if (startUid.isEmpty())
   {
+    // (all the messages: the index complete when it ends)
+    mListingFromComplete = true;
     if ( mMailCheckProgressItem )
       mMailCheckProgressItem->setStatus( i18n("Retrieving message status") );
     url.setPath(imapPath() + ";SECTION=UID FLAGS");
@@ -1270,6 +1296,9 @@ void KMFolderImap::reallyGetFolder(const QString &startUid)
     ImapAccountBase::jobData jd( url.url(), folder() );
     jd.cancellable = true;
     account()->insertJob(job, jd);
+    // (the deleted ones of this listing only, not of one it restarts)
+    mListingDeleted = 0;
+    mListingDeletedJob = job;
     connect(job, SIGNAL(result(KIO::Job *)),
             this, SLOT(slotListFolderResult(KIO::Job *)));
     connect(job, SIGNAL(entries(KIO::Job *, const KIO::UDSEntryList &)),
@@ -1431,6 +1460,9 @@ void KMFolderImap::slotListFolderEntries(KIO::Job * job,
         mMailCheckProgressItem->incCompletedItems();
         mMailCheckProgressItem->updateProgress();
       }
+    } else if ( ( mimeType == "message/rfc822-imap" || mimeType == "message/rfc822" ) &&
+                ( flags & 8 ) && job == mListingDeletedJob ) {
+      ++mListingDeleted;
     }
   }
 }
@@ -2353,12 +2385,15 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
     // Message-ID of the one that has it.
     QMap<ulong, int> flagsOf;
     QMap<ulong, QString> messageIdOf;
+    // (and the part with its envelope, for the balloon)
+    QMap<ulong, QString> envelopeOf;
     for ( QStringList::ConstIterator part = parts.begin(); part != parts.end(); ++part ) {
       if ( part == parts.begin() )
         continue;
       ulong uid = 0;
       int flags = 0;
       QString messageId;
+      bool envelope = false;
       // (unfolded: a long Message-ID goes on the next line)
       QString text = *part;
       text.replace( "\r\n ", " " );
@@ -2371,12 +2406,22 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
           flags = ( *line ).mid( 9 ).toInt();
         else if ( ( *line ).lower().startsWith( "message-id:" ) )
           messageId = messageIdKey( ( *line ).mid( 11 ) );
+        if ( ( *line ).lower().startsWith( "from:" ) || ( *line ).lower().startsWith( "subject:" ) )
+          envelope = true;
       }
       if ( uid == 0 )
         continue;
       flagsOf[ uid ] = flags;
       if ( !messageId.isEmpty() )
         messageIdOf[ uid ] = messageId;
+      if ( envelope ) {
+        // (unfolded, kio_imap4 folds long lines with a bare LF too)
+        QString headers = *part;
+        headers.replace( "\r\n", "\n" );
+        headers.replace( "\n ", " " );
+        headers.replace( "\n\t", " " );
+        envelopeOf[ uid ] = headers;
+      }
       next = QMAX( next, uid + 1 );
     }
     int count = 0;
@@ -2405,23 +2450,55 @@ void KMFolderImap::slotNewMailFetchResult( KIO::Job * job )
     // pass from the end: the new ones are the last; the folder opened for
     // it if it is closed, as INBOX listed for the filters)
     // (a folder closed and not listed up to them: none here)
-    if ( !counted.isEmpty() && ( folder()->isOpened() || mLastUid >= counted.first() )
+    QMap<ulong, Q_UINT32> serNumOf;
+    // (only an index of this UID validity: a UID of another one is
+    // another message)
+    if ( !counted.isEmpty() && uidValidity() == validity
+         && ( folder()->isOpened() || mLastUid >= counted.first() )
          && open( "newmail" ) == 0 ) {
       QValueList<ulong>::ConstIterator want = counted.fromLast();
-      QValueList<Q_UINT32> serNums;
       for ( int i = this->count() - 1; i >= 0 && want != counted.end(); --i ) {
         const KMMsgBase * msgBase = getMsgBase( i );
         if ( !msgBase )
           continue;
         while ( want != counted.end() && msgBase->UID() < *want )
           want = ( want == counted.begin() ) ? counted.end() : --want;
-        if ( want != counted.end() && msgBase->UID() == *want )
-          serNums.prepend( KMMsgDict::instance()->getMsgSerNum( folder(), i ) );
+        if ( want != counted.end() && msgBase->UID() == *want ) {
+          const Q_UINT32 serNum = KMMsgDict::instance()->getMsgSerNum( folder(), i );
+          if ( serNum )
+            serNumOf[ *want ] = serNum;
+        }
       }
       close( "newmail" );
-      // (in the order of arrival)
-      for ( QValueList<Q_UINT32>::ConstIterator sn = serNums.begin(); sn != serNums.end(); ++sn )
-        kmkernel->acctMgr()->addNewMessage( account(), *sn, folder()->idString() );
+    }
+    // (in the order of arrival; one not here by its UID and the envelope
+    // of this fetch, one without an envelope only counted)
+    for ( QValueList<ulong>::ConstIterator uid = counted.begin(); uid != counted.end(); ++uid ) {
+      QMap<ulong, Q_UINT32>::ConstIterator sn = serNumOf.find( *uid );
+      if ( sn != serNumOf.end() ) {
+        kmkernel->acctMgr()->addNewMessage( account(), sn.data(), folder()->idString() );
+        continue;
+      }
+      QMap<ulong, QString>::ConstIterator envelope = envelopeOf.find( *uid );
+      if ( envelope == envelopeOf.end() )
+        continue;
+      // (its headers: the part from its first line on, decoded as
+      // those of a message listed)
+      QString text = envelope.data();
+      while ( text.startsWith( "\n" ) )
+        text.remove( 0, 1 );
+      KMMessage msg;
+      msg.fromString( QCString( text.latin1() ) );
+      AccountManager::NewMessage message;
+      message.folderId = folder()->idString();
+      message.uid = *uid;
+      message.uidValidity = validity;
+      message.listing = mListingsStarted;
+      message.from = msg.fromStrip();
+      message.subject = msg.subject();
+      if ( !msg.headerField( "Date" ).isEmpty() )
+        message.date = msg.date();
+      kmkernel->acctMgr()->addNewEnvelope( account(), message );
     }
     if ( selectedNow )
       next = QMAX( next, uidNext );
@@ -2729,6 +2806,27 @@ void KMFolderImap::finishMailCheck( const char *dbg, imapState state )
 {
   quiet( false );
   mContentState = state;
+  if ( state == imapFinished && !mListingUidValidity.isEmpty() ) {
+    // (a fetch refused, a message not taken: not as many as the
+    // SELECT had, the listing proves nothing, nor does the next one
+    // that starts from it)
+    mIndexComplete = mListingFromComplete
+                     && ( mListingExists < 0 || mListingExists == count() + mListingDeleted );
+    if ( mIndexComplete ) {
+      // (a bound of the same UID validity is not lowered)
+      if ( mListedUidValidity == mListingUidValidity )
+        mListedUidNext = QMAX( mListedUidNext, mListingUidNext );
+      else
+        mListedUidNext = mListingUidNext;
+      mListedNumber = mListingsStarted;
+      mListedUidValidity = mListingUidValidity;
+    }
+  }
+  mListingUidValidity = QString::null;
+  mListingUidNext = 0;
+  mListingExists = -1;
+  mListingDeleted = 0;
+  mListingDeletedJob = 0;
   emit folderComplete( this, mContentState == imapFinished );
   close(dbg);
 }
