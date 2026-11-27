@@ -54,12 +54,16 @@ public:
   /** Shows and raises the main window (on this desktop or the one it
       was on, as configured). */
   void showKMail();
+  /** The main window is not shown yet (KMail started in the tray): the
+      first showKMail() lets the window manager place it. */
+  void setMainWindowNotShown();
 
 private slots:
   void updateNewMessageNotification(KMFolder * folder);
   void foldersChanged();
   void selectedAccount(int);
   void updateNewMessages();
+  void toggleAutostart();
 
 protected:
   void mousePressEvent(QMouseEvent *);
@@ -72,6 +76,7 @@ protected:
 private:
 
   bool mParentVisible;
+  bool mParentNeverShown;
   QPoint mPosOfMainWin;
   int mDesktopOfMainWin;
 

@@ -556,8 +556,10 @@ public:
 
 private:
   virtual void doLoadFromGlobalSettings();
+  virtual void doLoadOther();
 
 private: // data
+  QCheckBox    *mAutostartCheck;
   QCheckBox    *mSystemTrayCheck;
   QCheckBox    *mRememberVirtualDesktopCheck;
   QButtonGroup *mSystemTrayGroup;

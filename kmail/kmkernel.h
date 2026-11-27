@@ -326,6 +326,16 @@ public:
   bool haveSystemTrayApplet();
 
   bool registerSystemTrayApplet( const KSystemTray* );
+
+  /** Whether the KMail application is started at login: Autostart in
+      [General] of kmailrc, the condition of its autostart entry. Off when
+      not set; the first start of the application turns it on (see
+      initStartAtLogin()). */
+  static bool startAtLogin();
+  static void setStartAtLogin( bool start );
+  /** Turns starting at login on if the user did not choose yet. For the
+      KMail application only, not for KMail in Kontact. */
+  static void initStartAtLogin();
   bool unregisterSystemTrayApplet( const KSystemTray* );
 
   /// Reimplemented from KMailIface
@@ -419,7 +429,9 @@ signals:
   void onlineStatusChanged( GlobalSettings::EnumNetworkState::type );
 
 private:
-  void openReader( bool onlyCheck );
+  /** With inTray, a new main window stays hidden behind the system tray
+      icon when that is always shown, and an existing one is left as it is. */
+  void openReader( bool onlyCheck, bool inTray = false );
   KMMsgStatus strToStatus(const QString &flags);
   KMFolder *currentFolder();
 

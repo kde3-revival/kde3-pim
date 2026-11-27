@@ -13,6 +13,9 @@
 #include "broadcaststatus.h"
 #include "accountmanager.h"
 #include "kmtransport.h"
+#include "kmsystemtray.h"
+#include "kmkernel.h"
+#include "globalsettings.h"
 
 #include <kapplication.h>
 #include <klocale.h>
@@ -27,7 +30,8 @@
 
 KMMainWin::KMMainWin(QWidget *)
     : KMainWindow( 0, "kmail-mainwindow#" ),
-      mReallyClose( false )
+      mReallyClose( false ),
+      mRestoredInTray( false )
 {
   // Set this to be the group leader for all subdialogs - this means
   // modal subdialogs will only affect this dialog, not the other windows
@@ -216,7 +220,32 @@ bool KMMainWin::queryClose()
 
 void KMMainWin::slotShowTipOnStart()
 {
+  // not when started in the tray
+  if ( isHidden() )
+    return;
   KTipDialog::showTip( this );
+}
+
+bool KMMainWin::stayInTray()
+{
+  // the icon shows the window of the first main widget only
+  if ( kmkernel->getKMMainWidget() != mKMMainWidget )
+    return false;
+  KMSystemTray *tray = mKMMainWidget->systray();
+  if ( !tray || tray->mode() != GlobalSettings::EnumSystemTrayPolicy::ShowAlways )
+    return false;
+  tray->setMainWindowNotShown();
+  return true;
+}
+
+void KMMainWin::saveProperties( KConfig *config )
+{
+  config->writeEntry( "HiddenInTray", isHidden() && kmkernel->haveSystemTrayApplet() );
+}
+
+void KMMainWin::readProperties( KConfig *config )
+{
+  mRestoredInTray = config->readBoolEntry( "HiddenInTray", false );
 }
 
 

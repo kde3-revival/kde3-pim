@@ -436,6 +436,11 @@ install(FILES
   DESTINATION ${KDE3_XDG_APPS_INSTALL_DIR})
 
 install(FILES
+  kmail-autostart.desktop
+  DESTINATION ${KDE3_AUTOSTART_INSTALL_DIR}
+  RENAME kmail.desktop)
+
+install(FILES
   kmcomposerui.rc
   kmmainwin.rc
   kmreadermainwin.rc
