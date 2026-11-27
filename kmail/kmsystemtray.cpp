@@ -46,6 +46,8 @@ using KMail::AccountManager;
 #include <math.h>
 #include <assert.h>
 
+#include <X11/Xlib.h>
+
 /**
  * Construct a KSystemTray icon to be displayed when new mail
  * has arrived in a non-system folder.  The KMSystemTray listens
@@ -61,6 +63,8 @@ KMSystemTray::KMSystemTray(QWidget *parent, const char *name)
   : KSystemTray( parent, name ),
     mParentVisible( true ),
     mParentNeverShown( false ),
+    mDockTimer( 0 ),
+    mDockChecks( 0 ),
     mPosOfMainWin( 0, 0 ),
     mDesktopOfMainWin( 0 ),
     mMode( GlobalSettings::EnumSystemTrayPolicy::ShowOnUnread ),
@@ -449,6 +453,47 @@ void KMSystemTray::setMainWindowNotShown()
 {
   mParentVisible = false;
   mParentNeverShown = true;
+  // the panel may come up after KMail: wait for a system tray a while
+  if ( !mDockTimer ) {
+    mDockTimer = new QTimer( this, "docktimer" );
+    connect( mDockTimer, SIGNAL( timeout() ), SLOT( checkDocked() ) );
+  }
+  mDockChecks = 0;
+  mDockTimer->start( 500 );
+}
+
+void KMSystemTray::checkDocked()
+{
+  KMMainWidget * mainWidget = kmkernel->getKMMainWidget();
+  QWidget * mainWin = mainWidget ? mainWidget->topLevelWidget() : 0;
+  // docked, or the window shown meanwhile: nothing to do
+  if ( !mainWin || !mainWin->isHidden() || isDocked() ) {
+    mDockTimer->stop();
+    return;
+  }
+  if ( ++mDockChecks < 30 )
+    return;
+  mDockTimer->stop();
+  kdDebug(5006) << "No system tray took the icon: showing the main window" << endl;
+  showKMail();
+}
+
+bool KMSystemTray::isDocked() const
+{
+  if ( !isVisible() )
+    return false;
+  QCString selection;
+  selection.sprintf( "_NET_SYSTEM_TRAY_S%d", qt_xscreen() );
+  if ( XGetSelectionOwner( qt_xdisplay(), XInternAtom( qt_xdisplay(), selection.data(), False ) ) == None )
+    return false;
+  Window root = 0, parent = 0;
+  Window * children = 0;
+  unsigned int count = 0;
+  if ( !XQueryTree( qt_xdisplay(), winId(), &root, &parent, &children, &count ) )
+    return false;
+  if ( children )
+    XFree( children );
+  return parent != 0 && parent != root;
 }
 
 void KMSystemTray::hideKMail()

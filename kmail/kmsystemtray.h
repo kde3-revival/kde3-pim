@@ -55,8 +55,13 @@ public:
       was on, as configured). */
   void showKMail();
   /** The main window is not shown yet (KMail started in the tray): the
-      first showKMail() lets the window manager place it. */
+      first showKMail() lets the window manager place it.  If the icon is
+      not in a system tray within 15 seconds (no panel with one), the
+      window is shown: KMail is not left running unseen. */
   void setMainWindowNotShown();
+  /** In a system tray: one exists (owns the system tray selection) and it
+      took the icon (reparented it). */
+  bool isDocked() const;
 
 private slots:
   void updateNewMessageNotification(KMFolder * folder);
@@ -64,6 +69,7 @@ private slots:
   void selectedAccount(int);
   void updateNewMessages();
   void toggleAutostart();
+  void checkDocked();
 
 protected:
   void mousePressEvent(QMouseEvent *);
@@ -77,6 +83,8 @@ private:
 
   bool mParentVisible;
   bool mParentNeverShown;
+  QTimer *mDockTimer;
+  int mDockChecks;
   QPoint mPosOfMainWin;
   int mDesktopOfMainWin;
 

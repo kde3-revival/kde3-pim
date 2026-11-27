@@ -560,6 +560,7 @@ private:
 
 private: // data
   QCheckBox    *mAutostartCheck;
+  bool          mAutostartLoaded; // the setting when loaded or saved
   QCheckBox    *mSystemTrayCheck;
   QCheckBox    *mRememberVirtualDesktopCheck;
   QButtonGroup *mSystemTrayGroup;

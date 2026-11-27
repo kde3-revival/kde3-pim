@@ -2519,6 +2519,7 @@ AppearancePageSystemTrayTab::AppearancePageSystemTrayTab( QWidget * parent,
 
   // Starting at login, as in the context menu of the tray icon; not in
   // Kontact: the autostart entry starts the KMail application
+  mAutostartLoaded = false;
   mAutostartCheck = new QCheckBox( i18n("Start KMail at &login"), this );
   vlay->addWidget( mAutostartCheck );
   QWhatsThis::add( mAutostartCheck,
@@ -2545,7 +2546,8 @@ void AppearancePage::SystemTrayTab::doLoadFromGlobalSettings() {
 }
 
 void AppearancePage::SystemTrayTab::doLoadOther() {
-  mAutostartCheck->setChecked( KMKernel::startAtLogin() );
+  mAutostartLoaded = KMKernel::startAtLogin();
+  mAutostartCheck->setChecked( mAutostartLoaded );
 }
 
 void AppearancePage::SystemTrayTab::installProfile( KConfig * profile ) {
@@ -2575,9 +2577,13 @@ void AppearancePage::SystemTrayTab::save() {
   GlobalSettings::self()->setSystemTrayPolicy( mSystemTrayGroup->id( mSystemTrayGroup->selected() ) );
   GlobalSettings::self()->setShowNewMailBalloon( mNewMailBalloonCheck->isChecked() );
   GlobalSettings::self()->setNewMailBalloonTimeout( mNewMailBalloonTimeoutSpin->value() );
+  // only a change made here: the tray icon's menu may have changed the
+  // setting since the dialog read it
   if ( !kmkernel->xmlGuiInstance() &&
-       mAutostartCheck->isChecked() != KMKernel::startAtLogin() )
-    KMKernel::setStartAtLogin( mAutostartCheck->isChecked() );
+       mAutostartCheck->isChecked() != mAutostartLoaded ) {
+    mAutostartLoaded = mAutostartCheck->isChecked();
+    KMKernel::setStartAtLogin( mAutostartLoaded );
+  }
 }
 
 

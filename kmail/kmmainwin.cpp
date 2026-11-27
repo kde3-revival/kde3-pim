@@ -18,6 +18,7 @@
 #include "globalsettings.h"
 
 #include <kapplication.h>
+#include <qdesktopwidget.h>
 #include <klocale.h>
 #include <kedittoolbar.h>
 #include <kconfig.h>
@@ -234,6 +235,13 @@ bool KMMainWin::stayInTray()
   KMSystemTray *tray = mKMMainWidget->systray();
   if ( !tray || tray->mode() != GlobalSettings::EnumSystemTrayPolicy::ShowAlways )
     return false;
+  // the size show() would give the new window now (Qt's natural size):
+  // when the icon shows it later, the layout asks for another one
+  if ( !testWState( WState_Resized ) ) {
+    const QRect screen = QApplication::desktop()->screenGeometry( x11Screen() );
+    resize( sizeHint().expandedTo( QSize( 200, 150 ) )
+            .boundedTo( QSize( screen.width() * 2 / 3, screen.height() * 2 / 3 ) ) );
+  }
   tray->setMainWindowNotShown();
   return true;
 }
