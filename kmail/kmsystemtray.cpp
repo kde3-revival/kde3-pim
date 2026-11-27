@@ -64,7 +64,6 @@ KMSystemTray::KMSystemTray(QWidget *parent, const char *name)
     mParentVisible( true ),
     mParentNeverShown( false ),
     mDockTimer( 0 ),
-    mDockChecks( 0 ),
     mPosOfMainWin( 0, 0 ),
     mDesktopOfMainWin( 0 ),
     mMode( GlobalSettings::EnumSystemTrayPolicy::ShowOnUnread ),
@@ -453,29 +452,50 @@ void KMSystemTray::setMainWindowNotShown()
 {
   mParentVisible = false;
   mParentNeverShown = true;
-  // the panel may come up after KMail: wait for a system tray a while
+  // the panel may come up after KMail: whether the icon is in a system
+  // tray is decided after a while, unless the window is shown or hidden
+  // before (by the icon, kmail started again, ...): the user decides then
+  KMMainWidget * mainWidget = kmkernel->getKMMainWidget();
+  QWidget * mainWin = mainWidget ? mainWidget->topLevelWidget() : 0;
+  if ( !mainWin )
+    return;
+  if ( mHiddenMainWin )
+    mHiddenMainWin->removeEventFilter( this );
+  mHiddenMainWin = mainWin;
+  mainWin->installEventFilter( this );
   if ( !mDockTimer ) {
     mDockTimer = new QTimer( this, "docktimer" );
     connect( mDockTimer, SIGNAL( timeout() ), SLOT( checkDocked() ) );
   }
-  mDockChecks = 0;
-  mDockTimer->start( 500 );
+  mDockTimer->start( 15000, true );
+}
+
+void KMSystemTray::cancelDockCheck()
+{
+  if ( mDockTimer )
+    mDockTimer->stop();
+  if ( mHiddenMainWin )
+    mHiddenMainWin->removeEventFilter( this );
+  mHiddenMainWin = 0;
+}
+
+bool KMSystemTray::eventFilter( QObject * o, QEvent * e )
+{
+  if ( o == mHiddenMainWin &&
+       ( e->type() == QEvent::Show || e->type() == QEvent::Hide ) )
+    cancelDockCheck();
+  return KSystemTray::eventFilter( o, e );
 }
 
 void KMSystemTray::checkDocked()
 {
-  KMMainWidget * mainWidget = kmkernel->getKMMainWidget();
-  QWidget * mainWin = mainWidget ? mainWidget->topLevelWidget() : 0;
-  // docked, or the window shown meanwhile: nothing to do
-  if ( !mainWin || !mainWin->isHidden() || isDocked() ) {
-    mDockTimer->stop();
-    return;
+  // still never shown (see eventFilter())
+  const bool show = mHiddenMainWin && !isDocked();
+  cancelDockCheck();
+  if ( show ) {
+    kdDebug(5006) << "No system tray took the icon: showing the main window" << endl;
+    showKMail();
   }
-  if ( ++mDockChecks < 30 )
-    return;
-  mDockTimer->stop();
-  kdDebug(5006) << "No system tray took the icon: showing the main window" << endl;
-  showKMail();
 }
 
 bool KMSystemTray::isDocked() const
