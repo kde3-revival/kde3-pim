@@ -803,7 +803,8 @@ void NewMailBalloon::showBalloon()
   // (for tools that look for it: no frame shows it)
   balloon->setCaption( i18n( "New Mail" ) );
   balloon->setTitle( title );
-  balloon->setText( lines.join( "\n" ) );
+  // (a thin line between the messages, between subject and preview)
+  balloon->setTextLines( lines );
   balloon->setPixmap( picture );
   balloon->insertAction( i18n( "to read a message", "Read" ), ReadAction );
   // (only the messages known here: all, or as many as it says)
